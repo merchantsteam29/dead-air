@@ -51,7 +51,7 @@ export class Crew {
     this.legs = [-1, 1].map((sx) => { const piv = new THREE.Group(); piv.position.set(sx * 0.14, 0.38, 0); piv.add(limb(0.18, 0.09, dark)); this.tilt.add(piv); return piv; });
     this.root.traverse((o) => { if (o.isMesh) o.castShadow = false; });
     // state
-    this.phase = 0; this.flop = 0; this.flopV = 0; this.lean = 0; this.leanV = 0; this.roll = 0; this.talk = 0; this.lastSpeed = 0; this.held = null;
+    this.phase = 0; this.rag = null; this.pendingKnock = null; this.lean = 0; this.leanV = 0; this.roll = 0; this.talk = 0; this.lastSpeed = 0; this.held = null;
     this.blink = 2 + Math.random() * 3;
   }
 
@@ -72,36 +72,81 @@ export class Crew {
     if (obj) { this.hand.add(obj); obj.position.set(0, 0, 0); obj.rotation.set(0, 0, 0); }
   }
 
-  // s: { speed (m/s), down, dead, talk (0..1), aim, holding, pitch, air }
+  // A shove from outside (world direction): the next fall goes that way.
+  knock(dx, dz) { this.pendingKnock = { x: dx, z: dz }; }
+
+  // s: { speed (m/s), down, dead, carried, talk (0..1), aim, holding, pitch, air, light, emote }
   update(dt, s) {
+    const lying = s.dead || s.down || s.carried;
+    const em = lying ? null : s.emote;
     // walk cycle
-    const sp = s.down || s.dead ? 0 : s.speed;
+    const sp = lying || em === 'sit' ? 0 : s.speed;
     this.phase += dt * clamp(sp, 0, 7) * 2.6;
     const sw = Math.sin(this.phase) * clamp(sp / 3, 0, 1);
-    this.legs[0].rotation.x = sw * 0.8; this.legs[1].rotation.x = -sw * 0.8;
+    this.legs[0].rotation.set(sw * 0.8, 0, 0); this.legs[1].rotation.set(-sw * 0.8, 0, 0);
     // lean with speed changes, springy
     const acc = (sp - this.lastSpeed) / Math.max(dt, 0.001); this.lastSpeed = sp;
     const leanT = clamp(-acc * 0.02, -0.35, 0.35) - clamp(sp * 0.03, 0, 0.18);
     this.leanV += ((leanT - this.lean) * 90 - this.leanV * 9) * dt; this.lean += this.leanV * dt;
-    // flop over when knocked down or dead, with a bounce
-    const flopT = s.dead || s.down ? 1 : 0;
-    this.flopV += ((flopT - this.flop) * 120 - this.flopV * (flopT ? 7 : 14)) * dt; this.flop += this.flopV * dt;
-    if (s.dead || s.down) this.roll += (0.5 - this.roll) * dt * 3; else this.roll += (0 - this.roll) * dt * 6;
-    this.tilt.rotation.x = this.lean * (1 - clamp(this.flop, 0, 1)) + this.flop * 1.5;
-    this.tilt.rotation.z = this.roll * clamp(this.flop, 0, 1) + Math.sin(this.phase * 0.5) * 0.04 * clamp(sp / 3, 0, 1);
-    this.tilt.position.y = Math.abs(Math.sin(this.phase)) * 0.05 * clamp(sp / 3, 0, 1) + (s.air ? 0.05 : 0) - clamp(this.flop, 0, 1) * 0.1;
-    // arms
+    const t = performance.now() / 1000;
     const aL = this.arms[0], aR = this.arms[1];
-    if (s.dead || s.down) { aL.rotation.set(-2.6, 0, -0.5 + Math.sin(this.phase * 3) * 0.1); aR.rotation.set(-2.6, 0, 0.5); }
-    else if (s.aim) { aR.rotation.set(-Math.PI / 2 - (s.pitch || 0) * 0.9, 0, 0.35); aL.rotation.set(-Math.PI / 2 - (s.pitch || 0) * 0.9, 0, -0.4); }
-    else if (s.holding === 'prop') { aR.rotation.set(-1.3, 0, 0.25); aL.rotation.set(-1.3, 0, -0.25); }
-    else if (s.holding === 'cam') { aR.rotation.set(-0.7, 0, 0.1); aL.rotation.set(-sw * 0.7, 0, -0.08); }
-    else { aR.rotation.set(sw * 0.7, 0, 0.08 + (s.wave ? 2.6 + Math.sin(this.phase * 4) * 0.3 : 0)); aL.rotation.set(-sw * 0.7, 0, -0.08); }
-    // mouth flaps when talking; eyes blink; X eyes when dead
-    this.talk += ((s.talk || 0) - this.talk) * Math.min(1, dt * 18);
-    this.mouth.scale.y = 0.25 + clamp(this.talk * 4, 0, 1) * (0.8 + Math.sin(performance.now() / 45) * 0.25);
+    // ---- ragdoll: thrown the way the hit came from, tumbling, sliding, limbs flailing ----
+    if (lying && !this.rag) {
+      const k = this.pendingKnock || { x: Math.random() - 0.5, z: Math.random() - 0.5 }; this.pendingKnock = null;
+      const yaw = this.root.rotation.y, c = Math.cos(yaw), sn = Math.sin(yaw);
+      let lx = k.x * c - k.z * sn, lz = k.x * sn + k.z * c; const l = Math.hypot(lx, lz) || 1; lx /= l; lz /= l;
+      const force = clamp(Math.hypot(k.x, k.z), 0.5, 2.5);
+      this.rag = { dx: lx, dz: lz, ang: 0, av: 3 + force * 2, ox: 0, oz: 0, vx: lx * force * 1.6, vz: lz * force * 1.6, y: 0, vy: 1.5 + force, t: 0, ph: [0, 1, 2, 3].map(() => Math.random() * 6), spin: (Math.random() - 0.5) * 2 };
+    }
+    if (this.rag) {
+      const R = this.rag;
+      if (lying) {
+        R.t += dt;
+        if (s.carried) { R.ang += (Math.PI / 2 - R.ang) * Math.min(1, dt * 8); R.ox *= 0.8; R.oz *= 0.8; R.y = 0; R.dx = 1; R.dz = 0; } // draped sideways, out to the carrier's right
+        else {
+          R.av += 10 * Math.sin(R.ang + 0.2) * dt; R.ang += R.av * dt;
+          if (R.ang > Math.PI / 2) { R.ang = Math.PI / 2; R.av = Math.abs(R.av) > 1 ? -R.av * 0.35 : 0; }
+          R.vy -= 14 * dt; R.y += R.vy * dt;
+          if (R.y < 0) { R.y = 0; R.vy = Math.abs(R.vy) > 1.5 ? -R.vy * 0.3 : 0; R.vx *= 0.6; R.vz *= 0.6; }
+          if (R.y === 0) { const f = Math.exp(-dt * 3); R.vx *= f; R.vz *= f; }
+          R.ox = clamp(R.ox + R.vx * dt, -1.4, 1.4); R.oz = clamp(R.oz + R.vz * dt, -1.4, 1.4);
+        }
+      } else { // getting up
+        R.ang += (0 - R.ang) * Math.min(1, dt * 7); R.ox *= Math.exp(-dt * 6); R.oz *= Math.exp(-dt * 6); R.y = 0;
+        if (R.ang < 0.03) this.rag = null;
+      }
+    }
+    if (this.rag) {
+      const R = this.rag;
+      this.tilt.rotation.set(R.dz * R.ang, (R.spin || 0) * R.ang * 0.4, -R.dx * R.ang);
+      this.tilt.position.set(R.ox, R.y + (s.carried ? 0 : 0.05 * Math.sin(R.ang)), R.oz);
+      const fl = lying ? (s.dead && R.t > 2.5 ? 0.04 : Math.max(0.12, 1 - R.t * 0.7)) : 0.1; // flailing fades
+      const w = (i, a) => Math.sin(t * 13 + R.ph[i]) * a * fl;
+      aL.rotation.set(-2.2 + w(0, 1.2), 0, -0.6 + w(1, 0.8)); aR.rotation.set(-2.2 + w(1, 1.2), 0, 0.6 + w(2, 0.8));
+      this.legs[0].rotation.set(0.3 + w(2, 1), 0, -0.25); this.legs[1].rotation.set(0.1 + w(3, 1), 0, 0.25);
+    } else {
+      // ---- standing, maybe emoting ----
+      let rx = this.lean, rz = Math.sin(this.phase * 0.5) * 0.04 * clamp(sp / 3, 0, 1), y = Math.abs(Math.sin(this.phase)) * 0.05 * clamp(sp / 3, 0, 1) + (s.air ? 0.05 : 0);
+      if (em === 'dance') { const d = t * 8; rz = Math.sin(d) * 0.25; y = Math.abs(Math.sin(d)) * 0.12; this.legs[0].rotation.x = Math.max(0, Math.sin(d)) * 0.7; this.legs[1].rotation.x = Math.max(0, -Math.sin(d)) * 0.7; }
+      if (em === 'sit') { y = -0.3; this.legs[0].rotation.x = this.legs[1].rotation.x = -1.45; rx = 0.05; }
+      if (em === 'scream') { rx = -0.15 + Math.sin(t * 40) * 0.03; rz = Math.sin(t * 37) * 0.04; }
+      this.tilt.rotation.set(rx, 0, rz); this.tilt.position.set(0, y, 0);
+      if (em === 'wave' || (s.wave && !em)) { aR.rotation.set(0, 0, 2.6 + Math.sin(t * 12) * 0.35); aL.rotation.set(-sw * 0.7, 0, -0.08); }
+      else if (em === 'point') { aR.rotation.set(-Math.PI / 2 - (s.pitch || 0), 0, 0.05); aL.rotation.set(0, 0, -0.1); }
+      else if (em === 'dance') { const d = t * 8; aL.rotation.set(0, 0, -2.4 - Math.sin(d) * 0.6); aR.rotation.set(0, 0, 2.4 - Math.sin(d) * 0.6); }
+      else if (em === 'sit') { aL.rotation.set(-0.6, 0, -0.2); aR.rotation.set(-0.6, 0, 0.2); }
+      else if (em === 'scream') { aL.rotation.set(-2.9, 0, -0.5 + Math.sin(t * 30) * 0.15); aR.rotation.set(-2.9, 0, 0.5 + Math.sin(t * 33) * 0.15); }
+      else if (em === 'flex') { const p = Math.sin(t * 5) * 0.15; aL.rotation.set(0, 0, -1.5); aR.rotation.set(0, 0, 1.5); aL.rotation.x = -0.2; aR.rotation.x = -0.2; this.tilt.rotation.x = -0.1 + p * 0.3; }
+      else if (s.aim) { aR.rotation.set(-Math.PI / 2 - (s.pitch || 0) * 0.9, 0, 0.35); aL.rotation.set(-Math.PI / 2 - (s.pitch || 0) * 0.9, 0, -0.4); }
+      else if (s.holding === 'prop' || s.holding === 'body') { aR.rotation.set(-1.3, 0, 0.25); aL.rotation.set(-1.3, 0, -0.25); }
+      else if (s.holding === 'cam') { aR.rotation.set(-0.7, 0, 0.1); aL.rotation.set(-sw * 0.7, 0, -0.08); }
+      else { aR.rotation.set(sw * 0.7, 0, 0.08); aL.rotation.set(-sw * 0.7, 0, -0.08); }
+    }
+    // mouth flaps when talking (wide open when screaming); eyes blink; X eyes when dead
+    this.talk += ((em === 'scream' ? 1 : s.talk || 0) - this.talk) * Math.min(1, dt * 18);
+    this.mouth.scale.y = 0.25 + clamp(this.talk * 4, 0, 1) * (0.8 + Math.sin(performance.now() / 45) * 0.25) * (em === 'scream' ? 1.6 : 1);
     this.blink -= dt;
-    const shut = this.blink < 0.12;
+    const shut = this.blink < 0.12 || (s.down && !s.dead);
     if (this.blink < 0) this.blink = 2 + Math.random() * 4;
     for (let i = 0; i < 2; i++) { this.eyes[i].visible = !s.dead; this.pupils[i].visible = !s.dead && !shut; this.xs[i].visible = !!s.dead; this.eyes[i].scale.y = shut ? 0.15 : 1; }
     this.lampMat.color.setHex(s.light ? 0xfff2c0 : 0x333333);

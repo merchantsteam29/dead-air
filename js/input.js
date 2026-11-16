@@ -110,7 +110,7 @@ export class Input {
         // A jump, B drop, X use, Y light, LB sprint (or L3), RB night vision, LT film, RT throw, D-pad up wave, View crew, Menu pause
         this.pad = { mx: ax(0) + (btn(15) ? 1 : 0) - (btn(14) ? 1 : 0), mz: -ax(1), lx: ax(2), ly: ax(3),
           jump: hit(0), drop: hit(1), use: hit(2), useHeld: btn(2), light: hit(3), sprint: btn(4) || btn(10), nv: hit(5), aim: btn(6), throw: hit(7),
-          wave: hit(12), tab: btn(8), pause: hit(9), up: hit(12), downB: hit(13), a: hit(0), b: hit(1), left: hit(14), right: hit(15) };
+          tab: btn(8), pause: hit(9), up: hit(12), downB: hit(13), a: hit(0), b: hit(1), left: hit(14), right: hit(15) };
         const k = 380 * this.padSens * dt;
         this.dx += Math.sign(this.pad.lx) * this.pad.lx * this.pad.lx * k * 6; this.dy += Math.sign(this.pad.ly) * this.pad.ly * this.pad.ly * k * 4;
         if (this.padMode) return;
@@ -119,7 +119,7 @@ export class Input {
     if (this.touchMode) {
       const T = this.touch, s = T.stick, held = T.held, hit = T.hit;
       this.pad = { mx: s ? s.x : 0, mz: s ? -s.y : 0, lx: 0, ly: 0, jump: !!hit.jump, drop: !!hit.drop, use: !!hit.use, useHeld: !!held.use, light: !!hit.light, sprint: !!held.sprint || (s && Math.hypot(s.x, s.y) > 0.95),
-        nv: !!hit.nv, aim: T.aim, throw: !!hit.throw, wave: !!hit.wave, tab: !!held.tab, pause: !!hit.pause, touch: true };
+        nv: !!hit.nv, aim: T.aim, throw: !!hit.throw, emote: !!hit.emote, tab: !!held.tab, pause: !!hit.pause, touch: true };
       if (hit.film) T.aim = !T.aim;
       T.hit = {};
     }

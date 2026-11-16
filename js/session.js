@@ -14,7 +14,7 @@ export class SoloNet {
 }
 
 const FLOW = new Set(['start', 'review', 'lobby', 'season']);
-const GAME = new Set(['st', 'grab', 'drop', 'film', 'leave', 'snap', 'ev', 'end', 'quit']);
+const GAME = new Set(['st', 'grab', 'drop', 'film', 'leave', 'carry', 'bodyDrop', 'don', 'snap', 'ev', 'end', 'quit']);
 
 export class Session {
   constructor({ sfx, mic, name, look }) {

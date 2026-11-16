@@ -87,7 +87,7 @@ export class Camcorder {
     if (!this.aiming) { this.rate *= Math.exp(-dt * 0.5); return; }
     if (toggleNv) { this.nv = !this.nv; g.sfx.play('click'); if (this.nv) this.addChat(say('nv')); }
     // battery (mine to run down while I hold it; the host keeps the number)
-    cam.batt = Math.max(0, cam.batt - dt * (this.nv ? 0.6 : 0.32));
+    cam.batt = Math.max(0, cam.batt - dt * (this.nv ? 0.6 : 0.32) - (g.rain?.outside ? dt * 2.2 : 0)); // blood rain eats batteries
     this.recSecs += dt;
     this.tickT -= dt;
     if (this.tickT <= 0) { this.tickT = 0.2; this.tick(cam); }
@@ -153,7 +153,8 @@ export class Camcorder {
   tick(cam) {
     const g = this.g, c = g.camera.position;
     let pts = 0, best = 0, tag = null;
-    const add = (p, t) => { pts += p; if (p > best) { best = p; tag = t; } };
+    const tags = new Set(), seen = [];
+    const add = (p, t) => { pts += p; tags.add(t); if (p > best) { best = p; tag = t; } };
     for (const th of g.things.byId.values()) {
       if (!(th.ry > -5)) continue;
       const K = KINDS[th.kind], hy = th.kind === 'hand' ? 0.3 : th.kind === 'balloon' ? th.ry : th.kind === 'applause' ? 1.9 : th.kind === 'chair' ? 1.2 : 0.9;
@@ -161,6 +162,7 @@ export class Camcorder {
       const fr = this.fresh.get(th.id) ?? 1;
       if (f < 0) { this.fresh.set(th.id, Math.min(1, fr + 0.0018)); continue; } // ~2 minutes to be fresh again
       const d = Math.hypot(th.rx - c.x, th.rz - c.z);
+      seen.push({ kind: th.kind, d });
       const near = clamp(1.5 - d / 14, 0.25, 1.3), frame = 1 - f * 0.55;
       const glows = th.kind === 'tv' && th.s || th.kind === 'balloon' || th.kind === 'applause' && (th.s === 3 || th.s === 5);
       const p = K.worth * K.act(th, g.time) * frame * near * this.lit(th.rx, th.rz, glows) * fr * 0.2;
@@ -179,10 +181,15 @@ export class Camcorder {
       if (d > 14) continue;
       if (P.v > 0.12) add(14 * 0.2 * Math.min(1, P.v * 3), 'scream');
       if (P.down) add(18 * 0.2, 'fall');
-      if (P.wave) add(5 * 0.2, 'wave');
+      if (P.emote) add((P.emote === 'dance' ? 7 : 5) * 0.2, P.emote === 'dance' || P.emote === 'flex' ? 'dance' : P.emote === 'scream' ? 'scream' : P.emote === 'sit' ? 'idle' : 'wave');
+      if (P.carrying) add(4 * 0.2, 'carry');
     }
     if (g.me && g.me.v > 0.1) add(3 * 0.2, 'narrate');
+    // out in the blood rain: everything is worth double
+    if (g.rain?.exposed(c.x, c.z)) { pts *= 2; add(2 * 0.2, 'rain'); }
+    if (this.nv) tags.add('nv');
     if (!Number.isFinite(pts)) pts = 0;
+    g.dons?.progress(0.2, tags, seen);
     this.rate += (pts * 5 - this.rate) * 0.25;
     if (tag) { this.lastTag = tag; this.frameTags.add(tag); }
     this.pending += pts; this.framePts += pts;
@@ -198,11 +205,13 @@ export class Camcorder {
     if (ev.k === 'down') { const P = g.players.get(ev.id); if (P && ev.id !== g.myId) { at = [P.x, P.y + 0.8, P.z]; worth = 45; tag = String(ev.by).startsWith('p:') ? 'bonk' : 'fall'; } }
     if (ev.k === 'steal') { const th = g.things.byId.get(ev.th); if (th) { at = [th.rx, 0.3, th.rz]; worth = 120; tag = 'steal'; } }
     if (ev.k === 'pop') { const th = g.things.byId.get(ev.id); if (th) { at = [th.rx, th.ry, th.rz]; worth = 50; tag = 'pop'; } }
+    if (ev.k === 'revive') { const P = g.players.get(ev.id); if (P) { at = [ev.x, 1, ev.z]; worth = 220; tag = 'revive'; } }
     if (ev.k === 'struck') { const th = g.things.byId.get(ev.id); if (th) { at = [th.rx, 1.2, th.rz]; worth = th.kind === 'applause' ? 90 : 50; tag = 'bonk'; } }
     if (!at || this.visible(...at) < 0) return;
     const cam = this.myCam();
     if (!cam) return;
     this.pending += worth; this.framePts += worth; this.frameTags.add(tag); this.lastTag = tag;
+    g.dons?.moment(tag);
     this.pop(`+${worth} ${tag === 'kill' ? 'VIRAL MOMENT' : tag.toUpperCase()}`, true);
     g.sfx.play('big');
     for (let i = 0; i < 3; i++) setTimeout(() => this.addChat(say(tag)), i * 250);
@@ -224,10 +233,11 @@ export class Camcorder {
     setTimeout(() => d.remove(), 1400);
   }
 
-  addChat(text) {
-    for (let i = 0; i < 3 && text === this.lastChat; i++) text = say('idle');
+  addChat(text, special = false) {
+    for (let i = 0; i < 3 && text === this.lastChat && !special; i++) text = say('idle');
     this.lastChat = text;
     const d = document.createElement('div');
+    if (special) d.className = 'don';
     const u = document.createElement('b'); u.textContent = username(); u.style.color = userColor();
     d.append(u, document.createTextNode(' ' + text));
     this.el.chat.appendChild(d);

@@ -1,13 +1,15 @@
 // One night at a location. The same code runs alone and online: the host (or the only player) runs the
 // creatures, the junk's physics and the rules, and sends a snapshot 15 times a second; every player moves
-// themselves and sends where they are ('st'). Messages: client -> host: st, grab, drop, film, leave, quit.
-// Host -> everyone: snap, ev (sounds, knock-downs, deaths, thefts...), end.
+// themselves and sends where they are ('st'). Messages: client -> host: st, grab, drop, film, leave, carry, bodyDrop, don, quit.
+// Host -> everyone: snap, ev (sounds, knock-downs, deaths, thefts, revives, rain, donations...), end.
 import * as THREE from 'three';
 import { World, buildScene } from './world.js';
 import { Crew, makeProp, PROP_KINDS } from './models.js';
 import { Things } from './things.js';
 import { Items } from './items.js';
 import { Camcorder } from './camcorder.js';
+import { BloodRain, Donations, Bodies } from './chaos.js';
+import { EmoteWheel, EMOTES, EMOTE_SECS } from './emotes.js';
 import { clamp, angDiff, rng, pick, shuffle, r2, fmt } from './util.js';
 
 const EYE = 1.25, WALK = 3.0, RUN = 5.3, JUMP = 4.8, GRAV = 14;
@@ -58,7 +60,7 @@ export class Game {
     // the crew
     this.players = new Map();
     o.crew.forEach((c, i) => {
-      const P = { id: c.id, name: c.name, color: c.color, hat: c.hat, x: W.van.x + (i % 2 ? 2.4 : -2.4), y: 0, z: W.van.z - 2 + Math.floor(i / 2) * 1.6, yaw: 0, pitch: 0, vx: 0, vz: 0, v: 0, aim: false, flash: true, run: false, wave: false, nv: false, down: false, dead: false, downUntil: 0 };
+      const P = { id: c.id, name: c.name, color: c.color, hat: c.hat, x: W.van.x + (i % 2 ? 2.4 : -2.4), y: 0, z: W.van.z - 2 + Math.floor(i / 2) * 1.6, yaw: 0, pitch: 0, vx: 0, vz: 0, v: 0, aim: false, flash: true, run: false, wave: false, nv: false, down: false, dead: false, downUntil: 0, emote: null, carrier: null, carrying: null };
       P.rx = P.x; P.rz = P.z; P.ry = 0; P.ryaw = 0; P.stepD = 0; P.slot = -1;
       if (c.id !== this.myId) { P.model = new Crew(c.color, c.hat); scene.add(P.model.root); P.slot = this.players.size - (this.players.has(this.myId) ? 1 : 0); }
       this.players.set(c.id, P);
@@ -66,11 +68,15 @@ export class Game {
     let slot = 0; for (const P of this.players.values()) if (P.id !== this.myId) P.slot = slot++;
     this.me = this.players.get(this.myId);
     const me = this.me;
-    this.p = { vy: 0, ground: true, stam: 100, downT: 0, stepD: 0, bob: 0, holdE: 0, waveT: 0, flash: true, spec: 0, roll: 0, eye: EYE };
+    this.p = { emote: null, emoteT: 0, vy: 0, ground: true, stam: 100, downT: 0, stepD: 0, bob: 0, holdE: 0, waveT: 0, flash: true, spec: 0, roll: 0, eye: EYE };
 
     this.things = new Things(this);
     this.items = new Items(this);
     this.cam = new Camcorder(this);
+    this.rain = new BloodRain(this);
+    this.dons = new Donations(this);
+    this.bodies = new Bodies(this);
+    this.wheel = new EmoteWheel(this.input);
     if (this.isHost) this.populate(o.crew.length);
     this.snapT = 0; this.stT = 0; this.hudT = 0; this.endT = null;
 
@@ -156,21 +162,25 @@ export class Game {
   sound(s, x, y, z, n = 1) { this.broadcast({ t: 'ev', k: 'snd', s, x: r2(x), y: r2(y), z: r2(z), n }); }
   event(e) { this.broadcast({ t: 'ev', ...e }); }
   noise(x, z, radius) { for (const th of this.things.list) if (th.kind === 'applause' && !th.chase && Math.hypot(th.x - x, th.z - z) < radius) { th.heard = { x, z }; if (th.s === 0) th.s = 1; } }
-  knockDown(id, d, by) {
+  // dir: which way they go flying ({x, z}, any length; stronger = further)
+  knockDown(id, d, by, dir = null) {
     const P = this.players.get(id);
     if (!P || P.dead || P.down) return;
+    if (!dir) { const th = this.things.byId.get(by); dir = th ? { x: P.x - th.x, z: P.z - th.z } : { x: Math.random() - 0.5, z: Math.random() - 0.5 }; }
+    const dl = Math.hypot(dir.x, dir.z) || 1, f = clamp(dl / 4, 0.6, 2.5);
     P.down = true; P.downUntil = this.time + d;
     const it = this.items.heldBy(id);
     if (it) this.items.release(P, { x: P.x, y: P.y + 1, z: P.z, vx: (Math.random() - 0.5) * 3, vy: 3, vz: (Math.random() - 0.5) * 3 });
-    this.event({ k: 'down', id, d, by });
+    this.event({ k: 'down', id, d, by, dx: r2(dir.x / dl * f), dz: r2(dir.z / dl * f) });
   }
   kill(id, by) {
     const P = this.players.get(id);
     if (!P || P.dead) return;
-    P.dead = true; P.down = false;
+    P.dead = true; P.down = false; P.y = 0;
     const it = this.items.heldBy(id);
     if (it) this.items.release(P, { x: P.x, y: P.y + 1, z: P.z, vy: 2 });
-    this.event({ k: 'dead', id, by });
+    const th = this.things.byId.get(by), dx = th ? P.x - th.x : 0, dz = th ? P.z - th.z : 0, dl = Math.hypot(dx, dz) || 1;
+    this.event({ k: 'dead', id, by, dx: r2(dx / dl * 1.5), dz: r2(dz / dl * 1.5) });
   }
   stealFrom(id, th) {
     const it = this.items.heldBy(id);
@@ -196,13 +206,18 @@ export class Game {
     switch (m.t) {
       case 'st': {
         if (from === this.myId) return;
+        P.emote = EMOTES[(m.e | 0) - 1] || null;
+        if (P.dead) { P.v = clamp(m.v || 0, 0, 1); break; } // a body goes where the host says
         const dt = Math.max(0.03, (performance.now() - (P.stAt || 0)) / 1000); P.stAt = performance.now();
         P.vx = clamp((m.x - P.x) / dt, -9, 9); P.vz = clamp((m.z - P.z) / dt, -9, 9);
         Object.assign(P, { x: m.x, y: m.y, z: m.z, yaw: m.yaw, pitch: m.pitch, v: clamp(m.v || 0, 0, 1) });
         this.flagsIn(P, m.f);
         break;
       }
-      case 'grab': if (this.items.grab(P, m.id)) this.sound('grab', P.x, 1, P.z); break;
+      case 'grab': if (!P.carrying && this.items.grab(P, m.id)) this.sound('grab', P.x, 1, P.z); break;
+      case 'carry': this.bodies.hostCarry(P, m.id); break;
+      case 'bodyDrop': this.bodies.hostDrop(P, m); break;
+      case 'don': this.dons.hostClaim(P, m); break;
       case 'drop': { const it = this.items.release(P, m); if (it && Math.hypot(m.vx || 0, m.vz || 0) > 5) this.sound('whoosh', P.x, 1.3, P.z); break; }
       case 'film': {
         const it = this.items.byId.get(m.id);
@@ -234,12 +249,14 @@ export class Game {
 
   applySnap(m) {
     if (!this.isHost) this.left = m.l;
-    for (const [id, x, y, z, yaw, pitch, f, v, dn, dd] of m.p) {
+    for (const [id, x, y, z, yaw, pitch, f, v, dn, dd, e, car, cing] of m.p) {
       const P = this.players.get(id);
       if (!P) continue;
-      if (!this.isHost && id !== this.myId) { Object.assign(P, { x, y, z, yaw, pitch, v }); this.flagsIn(P, f); }
-      if (!this.isHost) { P.down = !!dn; P.dead = !!dd; }
+      if (!this.isHost && id !== this.myId) { Object.assign(P, { x, y, z, yaw, pitch, v }); this.flagsIn(P, f); P.emote = EMOTES[e - 1] || null; }
+      if (!this.isHost && id === this.myId && dd) Object.assign(P, { x, y, z }); // my body: where the host has it
+      if (!this.isHost) { P.down = !!dn; P.dead = !!dd; P.carrier = car || null; P.carrying = cing || null; }
     }
+    if (m.r !== undefined) this.rain.snapIn(m.r);
     this.things.applySnap(m.th);
     this.items.applySnap(m.it);
     this.nightViews = this.items.list.reduce((s, i) => s + (i.kind === 'cam' ? i.tape : 0), 0);
@@ -250,14 +267,22 @@ export class Game {
     if (e.k === 'snd') { this.sfx.play(e.s, { x: e.x, y: e.y, z: e.z }, e.n); if (this.isHost && e.s === 'hit') this.noise(e.x, e.z, 12); return; }
     if (e.k === 'down') {
       const P = this.players.get(e.id); if (P) P.down = true;
-      if (e.id === this.myId) { this.p.downT = e.d; this.sfx.play('thud', null); this.hud.down.classList.add('on'); }
-      else if (P) this.sfx.play('thud', { x: P.x, y: 0.5, z: P.z });
+      if (e.id === this.myId) { this.p.downT = e.d; this.p.emote = null; this.sfx.play('thud', null); this.hud.down.classList.add('on'); this.me.vx += (e.dx || 0) * 4; this.me.vz += (e.dz || 0) * 4; this.p.vy = 3; this.p.ground = false; this.p.rollDir = Math.sign((e.dx || 0) * Math.cos(this.me.yaw) - (e.dz || 0) * Math.sin(this.me.yaw)) || 1; this.input.rumble(0.7, 0.5, 250); }
+      else if (P) { this.sfx.play('thud', { x: P.x, y: 0.5, z: P.z }); P.model?.knock(e.dx || 0, e.dz || 0); }
     }
     if (e.k === 'dead') {
-      const P = this.players.get(e.id); if (P) { P.dead = true; P.down = false; }
+      const P = this.players.get(e.id); if (P) { P.dead = true; P.down = false; P.model?.knock(e.dx || 0, e.dz || 0); }
       if (e.id === this.myId) { this.sfx.play('sting'); this.toast(this.crewSize() > 1 ? 'You got taken. Dead crew can still talk to each other.' : 'You got taken.', 6); this.p.spec = 0; this.p.deathT = 0; this.killer = e.by; this.input.rumble(1, 1, 500); }
       else if (P) this.toast(`${P.name} is gone.`, 3);
     }
+    if (e.k === 'revive') {
+      const P = this.players.get(e.id);
+      if (P) { P.dead = false; P.down = false; P.carrier = null; P.x = P.rx = e.x; P.z = P.rz = e.z; P.y = 0; }
+      if (e.id === this.myId) { Object.assign(this.p, { downT: 0, deathT: 99, emote: null, vy: 0 }); this.killer = null; this.hud.spec.hidden = true; this.hud.down.classList.remove('on'); this.toast("You're back! The crew dragged you to the van.", 4); this.sfx.play('big'); }
+      else if (P) this.toast(`${P.name} is back!`, 3);
+    }
+    if (e.k === 'rain') this.rain.onEvent(e);
+    if (e.k === 'req' || e.k === 'reqDone' || e.k === 'reqEnd') this.dons.onEvent(e);
     if (e.k === 'steal' && e.id === this.myId) this.toast('The hand took it! Get it back (throw something at it).', 4);
     if (e.k === 'left') { const P = this.players.get(e.id); if (P) { if (P.model) this.scene.remove(P.model.root); this.players.delete(e.id); this.toast(`${P.name} left.`, 3); } }
     this.cam.moment(e);
@@ -270,11 +295,12 @@ export class Game {
     if (this.isHost && !this.over) this.hostTick(dt);
     else if (!this.isHost) {
       this.stT -= dt;
-      if (this.stT <= 0) { this.stT = 1 / 15; const me = this.me; this.send({ t: 'st', x: r2(me.x), y: r2(me.y), z: r2(me.z), yaw: r2(me.yaw), pitch: r2(me.pitch), f: this.flagsOut(me), v: r2(me.v) }); }
+      if (this.stT <= 0) { this.stT = 1 / 15; const me = this.me; this.send({ t: 'st', x: r2(me.x), y: r2(me.y), z: r2(me.z), yaw: r2(me.yaw), pitch: r2(me.pitch), f: this.flagsOut(me), v: r2(me.v), e: EMOTES.indexOf(me.emote) + 1 }); }
     }
     this.drawPlayers(dt);
     this.things.render(dt);
     this.items.render(dt);
+    this.rain.update(dt);
     this.viewModel(dt);
     this.voices();
     this.updateHud(dt);
@@ -291,13 +317,16 @@ export class Game {
     }
     this.things.hostUpdate(dt);
     this.items.hostUpdate(dt);
+    this.bodies.hostTick(dt);
+    this.rain.hostTick(dt);
+    this.dons.hostTick(dt);
     if (this.left <= 0) this.end('time');
     else if (!this.living().length) { this.endT = (this.endT ?? 4) - dt; if (this.endT <= 0) this.end('dead'); }
     this.snapT -= dt;
     if (this.snapT <= 0) {
       this.snapT = 1 / 15;
-      const p = [...this.players.values()].map((P) => [P.id, r2(P.x), r2(P.y), r2(P.z), r2(P.yaw), r2(P.pitch), this.flagsOut(P), r2(P.v), P.down ? 1 : 0, P.dead ? 1 : 0]);
-      this.broadcast({ t: 'snap', l: Math.round(this.left * 10) / 10, p, th: this.things.snap(), it: this.items.snap() });
+      const p = [...this.players.values()].map((P) => [P.id, r2(P.x), r2(P.y), r2(P.z), r2(P.yaw), r2(P.pitch), this.flagsOut(P), r2(P.v), P.down ? 1 : 0, P.dead ? 1 : 0, EMOTES.indexOf(P.emote) + 1, P.carrier || '', P.carrying || '']);
+      this.broadcast({ t: 'snap', l: Math.round(this.left * 10) / 10, r: this.rain.snapOut(), p, th: this.things.snap(), it: this.items.snap() });
     }
   }
 
@@ -343,6 +372,7 @@ export class Game {
     }
     const down = p.downT > 0 || me.down;
     const held = this.items.carriedBy(this.myId);
+    const body = me.carrying && this.players.get(me.carrying);
     const k = (c) => I.down(c);
     let mx = 0, mz = 0;
     if (!down) {
@@ -350,13 +380,14 @@ export class Game {
       mz = (k('KeyW') ? 1 : 0) - (k('KeyS') ? 1 : 0) + (pad ? pad.mz : 0);
     }
     const len = Math.hypot(mx, mz); if (len > 1) { mx /= len; mz /= len; }
-    const aimWant = !down && (I.rmb || (pad && pad.aim));
+    const aimWant = !down && !body && (I.rmb || (pad && pad.aim));
     const wantRun = !down && (k('ShiftLeft') || k('ShiftRight') || (pad && pad.sprint)) && mz > 0.3 && !this.cam.aiming;
     const run = wantRun && p.stam > 0 && !p.tired;
-    p.stam = clamp(p.stam + (run ? -22 : 14) * dt, 0, 100);
+    p.stam = clamp(p.stam + (run ? -22 : 14) * dt - (this.rain.outside ? 30 * dt : 0), 0, 100);
     if (p.stam <= 0) p.tired = true; if (p.tired && p.stam > 35) p.tired = false;
     let speed = run ? RUN : WALK;
     if (held && held.kind !== 'cam') speed *= 0.88;
+    if (body) speed *= 0.72;
     if (this.cam.aiming) speed *= 0.6;
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
     const wx = (rx * mx + fx * mz) * speed, wz = (rz * mx + fz * mz) * speed;
@@ -381,9 +412,12 @@ export class Game {
     // buttons
     if (!down) {
       if (I.hit('KeyF') || (pad && pad.light)) { p.flash = !p.flash; this.sfx.play('click'); }
-      if (I.hit('KeyG') || (pad && pad.wave)) p.waveT = 1.6;
-      const target = this.lookTarget();
-      if ((I.hit('KeyE') || (pad && pad.use)) && target && !held) this.send({ t: 'grab', id: target.id });
+      const target = body ? null : this.lookTarget();
+      if ((I.hit('KeyE') || (pad && pad.use)) && target && !held) {
+        if (target.kind === 'body') this.send({ t: 'carry', id: target.P.id }); else this.send({ t: 'grab', id: target.id });
+      }
+      if (body && (I.hit('KeyQ') || (pad && pad.drop))) this.dropBody(2);
+      if (body && (I.lmbHit || (pad && pad.throw))) this.dropBody(8);
       if (held && (I.hit('KeyQ') || (pad && pad.drop))) this.throwIt(held, 2.5);
       if (held && held.kind !== 'cam' && (I.lmbHit || (pad && pad.throw))) this.throwIt(held, 13);
       if (held && held.kind === 'cam' && !this.cam.aiming && (I.lmbHit || (pad && pad.throw))) this.throwIt(held, 9);
@@ -392,15 +426,19 @@ export class Game {
       if (inVan && holdE && !target && this.time > 20) { p.holdE += dt; if (p.holdE > 1.2) { p.holdE = -99; this.send({ t: 'leave' }); } }
       else if (p.holdE > 0 || !holdE) p.holdE = 0;
     }
-    p.waveT -= dt;
-    me.wave = p.waveT > 0;
+    // emotes
+    const chose = this.wheel.update(down || me.dead);
+    if (chose) { p.emote = chose; p.emoteT = EMOTE_SECS[chose]; if (chose === 'scream') this.sfx.play('squeak', null); }
+    p.emoteT -= dt;
+    if (p.emote && (p.emoteT <= 0 || down || ((p.emote === 'dance' || p.emote === 'sit') && (Math.hypot(mx, mz) > 0.2 || !p.ground)))) p.emote = null;
+    me.emote = p.emote; me.wave = p.emote === 'wave';
     me.flash = p.flash;
     this.cam.update(dt, aimWant, !down && (I.hit('KeyN') || (pad && pad.nv)));
     me.aim = this.cam.aiming; me.nv = this.cam.nv;
     // camera
-    const eyeT = down ? 0.35 : EYE - (this.cam.aiming ? 0.05 : 0);
+    const eyeT = down ? 0.35 : p.emote === 'sit' ? EYE - 0.4 : EYE - (this.cam.aiming ? 0.05 : 0);
     p.eye += (eyeT - p.eye) * Math.min(1, dt * (down ? 9 : 6));
-    p.roll += ((down ? 0.9 : 0) - p.roll) * Math.min(1, dt * 7);
+    p.roll += ((down ? 0.9 * (p.rollDir || 1) : 0) - p.roll) * Math.min(1, dt * 7);
     const bob = p.ground ? Math.sin(p.bob) * 0.04 * clamp(sp / 3, 0, 1) : 0;
     this.camera.position.set(me.x, me.y + p.eye + bob, me.z);
     this.camera.rotation.set(me.pitch, me.yaw, p.roll);
@@ -420,6 +458,13 @@ export class Game {
     this.cam.update(0, false, false);
   }
 
+  dropBody(power) {
+    const me = this.me, cp = Math.cos(me.pitch);
+    const dx = -Math.sin(me.yaw) * cp, dz = -Math.cos(me.yaw) * cp;
+    this.send({ t: 'bodyDrop', vx: r2(dx * power + me.vx * 0.5), vy: r2(power > 4 ? 3 + Math.sin(me.pitch) * power : 0.5), vz: r2(dz * power + me.vz * 0.5) });
+    if (power > 4) this.sfx.play('whoosh', null);
+  }
+
   // the nearest thing I could pick up, roughly where I'm looking
   lookTarget() {
     const me = this.me, c = this.camera.position, cp = Math.cos(me.pitch);
@@ -432,6 +477,14 @@ export class Game {
       const dot = (vx * dx + vy * dy + vz * dz) / d;
       const s = dot - d * 0.08 + (it.kind === 'cam' ? 0.05 : 0);
       if (dot > 0.82 && s > bs) { bs = s; best = it; }
+    }
+    // a friend's body
+    for (const P of this.players.values()) {
+      if (!P.dead || P.carrier || P.id === this.myId) continue;
+      const vx = P.rx - c.x, vy = 0.3 - c.y, vz = P.rz - c.z, d = Math.hypot(vx, vy, vz);
+      if (Math.hypot(vx, vz) > 2.4) continue;
+      const dot = (vx * dx + vy * dy + vz * dz) / d, s = dot - d * 0.08 + 0.1;
+      if (dot > 0.7 && s > bs) { bs = s; best = { kind: 'body', P }; }
     }
     return best;
   }
@@ -487,10 +540,11 @@ export class Game {
       const sp = Math.hypot(P.rx - ox, P.rz - oz) / Math.max(dt, 1e-3);
       const it = this.items.carriedBy(P.id);
       const m = P.model;
+      if (P.carrier) { P.rx = P.x; P.rz = P.z; P.ry = P.y; P.ryaw = P.yaw; } // held: no lag behind the carrier
       m.hold(it ? it.model : null);
       if (it) it.model.rotation.set(it.kind === 'cam' ? 0 : 0.3, 0, 0);
       m.root.position.set(P.rx, P.ry, P.rz); m.root.rotation.y = P.ryaw;
-      m.update(dt, { speed: sp, down: P.down, dead: P.dead, talk: P.v, aim: P.aim, holding: it ? (it.kind === 'cam' ? 'cam' : 'prop') : null, pitch: P.pitch, air: P.ry > 0.1, light: P.flash && !P.dead, wave: P.wave });
+      m.update(dt, { speed: sp, down: P.down, dead: P.dead, carried: !!P.carrier, talk: P.dead ? 0 : P.v, aim: P.aim, holding: P.carrying ? 'body' : it ? (it.kind === 'cam' ? 'cam' : 'prop') : null, pitch: P.pitch, air: P.ry > 0.1 && !P.dead, light: P.flash && !P.dead, emote: P.emote });
       // steps
       if (!P.dead && P.ry < 0.1) { P.stepD += sp * dt; if (P.stepD > 1.6) { P.stepD = 0; this.sfx.play('step', { x: P.rx, y: 0.1, z: P.rz }, sp > 4 ? 1 : 0.6); } }
       // headlamp
@@ -565,13 +619,17 @@ export class Game {
     const held = this.items.carriedBy(this.myId), tgt = !me.dead && !held && this.lookTarget();
     const K = (key, pad) => this.input.label(key, pad);
     if (me.dead) prompt = '';
+    else if (me.carrying) prompt = `Carrying ${this.players.get(me.carrying)?.name || 'a body'} · bring them to the van to revive · ${K('LMB', 'RT')} throw · ${K('Q', 'B')} drop`;
+    else if (tgt && tgt.kind === 'body') prompt = `${K('E', 'X')} carry ${tgt.P.name} (the van brings them back)`;
     else if (tgt) prompt = tgt.kind === 'cam' ? `${K('E', 'X')} pick up the camcorder (tape: ${fmt(tgt.tape)} views)` : `${K('E', 'X')} pick up the ${tgt.kind}`;
     else if (held && held.kind === 'cam') prompt = this.cam.aiming ? `${K('N', 'RB')} night vision · ${K('Q', 'B')} drop` : `${K('RMB', 'LT')} hold to film · ${K('LMB', 'RT')} throw · ${K('Q', 'B')} drop`;
     else if (held) prompt = `${K('LMB', 'RT')} throw · ${K('Q', 'B')} drop`;
-    if (!me.dead && W.inVan(me.x, me.z) && !tgt && this.time > 20) {
+    if (!me.dead && W.inVan(me.x, me.z) && !tgt && !me.carrying && this.time > 20) {
       const all = this.everyoneIn();
       prompt = all ? `Hold ${K('E', 'X')} to drive away${this.p.holdE > 0 ? ' ' + '▮'.repeat(Math.ceil(this.p.holdE / 0.2)) : ''}` : 'Everyone still alive has to be at the van to leave.';
     }
+    if (this.rain.outside) prompt = (prompt ? prompt + ' · ' : '') + '🩸 get under a roof!';
+    this.dons.hud();
     h.prompt.textContent = prompt;
     h.prompt.hidden = !prompt;
     // the van arrow: with Tab, or in the last minute
@@ -587,7 +645,7 @@ export class Game {
     h.tab.hidden = !tab;
     if (tab) {
       h.crew.innerHTML = [...this.players.values()].map((P) => {
-        const st = P.dead ? 'gone' : P.down ? 'knocked over' : W.inVan(P.x, P.z) ? 'at the van' : 'out there';
+        const st = P.dead ? (P.carrier ? 'being carried' : 'gone') : P.down ? 'knocked over' : W.inVan(P.x, P.z) ? 'at the van' : 'out there';
         const it = this.items.carriedBy(P.id);
         return `<div class="${P.dead ? 'dead' : ''}"><i style="background:#${new THREE.Color(colorOf(P.color)).getHexString()}"></i>${esc(P.name)}<span>${st}${it ? ' · ' + (it.kind === 'cam' ? '📹' : it.kind) : ''}</span></div>`;
       }).join('') + this.items.list.filter((i) => i.kind === 'cam').map((i) => `<div class="tape">📼 Tape ${i.id}: ${fmt(i.tape)} views · ${Math.round(i.batt)}% battery</div>`).join('');
@@ -615,6 +673,7 @@ export class Game {
     this.over = true;
     this.cam.dispose();
     this.things.dispose(); this.items.dispose();
+    this.rain.dispose(); this.dons.dispose(); this.wheel.dispose();
     this.sfx.stopAmbient();
     this.hud.root.hidden = true;
     this.hud.down.classList.remove('on');

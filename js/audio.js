@@ -121,6 +121,20 @@ export class Sfx {
   big() { [784, 988, 1175, 1568].forEach((f, i) => this.tone(this.master, f, 0.18, { type: 'triangle', vol: 0.09, at: i * 0.07 })); }
   click() { this.tone(this.master, 1200, 0.03, { type: 'square', vol: 0.04 }); }
   bad() { this.tone(this.master, 220, 0.3, { type: 'sawtooth', vol: 0.08, to: 110 }); }
+  cash() { [1568, 2093, 2637].forEach((f, i) => this.tone(this.master, f, 0.14, { type: 'triangle', vol: 0.08, at: i * 0.06 })); this.noise(this.master, 0.12, { f: 6000, q: 2, vol: 0.05, at: 0.12 }); }
+  revive(pos) { const d = this.at(pos, 4, 1); [523, 659, 784, 1046].forEach((f, i) => this.tone(d, f, 0.3, { type: 'sine', vol: 0.15, at: i * 0.1 })); this.tone(d, 80, 0.3, { vol: 0.4, to: 160 }); }
+  thunder() { const p = { x: this.lp.x + (Math.random() - 0.5) * 60, y: 20, z: this.lp.z + (Math.random() - 0.5) * 60 }, d = this.at(p, 20, 0.5); this.noise(d, 2.8, { f: 140, type: 'lowpass', vol: 0.7, attack: 0.05 }); this.noise(d, 0.25, { f: 900, q: 0.5, vol: 0.25 }); }
+  // blood rain: a hiss you can turn up (outside) and down (under a roof)
+  startRain() {
+    if (!this.ctx || this.rainNode) return;
+    const ctx = this.ctx, s = ctx.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 0.4;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(bp).connect(g).connect(this.master); s.start();
+    this.rainNode = { s, g };
+  }
+  stopRain() { const r = this.rainNode; if (!r) return; this.rainNode = null; r.g.gain.setTargetAtTime(0, this.now, 0.6); setTimeout(() => { try { r.s.stop(); r.g.disconnect(); } catch { /* gone */ } }, 3000); }
+  rainLevel(k) { if (this.rainNode) this.rainNode.g.gain.setTargetAtTime(0.25 * k, this.now, 0.3); }
   van() { this.tone(this.master, 90, 1.4, { type: 'sawtooth', vol: 0.12, to: 140, attack: 0.3 }); this.noise(this.master, 1.4, { f: 200, type: 'lowpass', vol: 0.2, attack: 0.3 }); }
 
   // ---------- loops ----------

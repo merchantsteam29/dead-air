@@ -30,6 +30,11 @@ export const LINES = {
   narrate: ['good commentary', 'keep talking', 'love the narration', 'whisper mode', 'asmr ghost hunt'],
   body: ['is he ok', 'hes not moving', 'poke him', 'ok thats not funny anymore'],
   nv: ['night vision goes hard', 'green mode', 'now we can see'],
+  dance: ['HE IS DANCING', 'the moves 😭', 'dance battle with the ghost', 'not now bro', 'hit the griddy', 'certified groover'],
+  carry: ['bro is carrying the team. literally', 'taxi service', 'take him to the van!!', 'piggyback 😭', 'drag him drag him'],
+  revive: ['HE IS BACK', 'resurrection arc', 'the van has healing powers??', 'lets gooo', 'back from the dead 💀'],
+  rain: ['WHY IS IT RED', 'blood rain?????', 'get inside!!', 'this is so metal', 'my screen is red', 'umbrella check'],
+  donation: ['W donation', 'rich chat', 'do it do it', 'money moves'],
 };
 export const say = (tag, r = Math.random) => pick(r, LINES[tag] || LINES.idle);
 

@@ -72,10 +72,13 @@
       <li><b>Bring the tape back.</b> When everyone alive is at the van, hold <kbd>E</kbd> to drive away. At 6 a.m. the van leaves anyway. Tapes left out there are lost, and so is anyone outside.</li>
       <li><b>Mr. Applause</b> hears voices and running. Keep it down. Or don't: if he gets your friend on camera, that's the best footage of the night. A thrown object stuns him.</li>
       <li><b>The hand</b> steals whatever you're holding. Throw something at it.</li>
+      <li><b>Dead?</b> Your friends can carry (or throw) your body back to the van. A few seconds there and you're back.</li>
+      <li><b>Donations</b> pop up: viewers pay you to film something. First camcorder to do it gets the bonus.</li>
+      <li><b>Blood rain</b> drains your stamina and battery outside. Get under a roof, or film it for double views.</li>
       <li>Your friends' screams, falls and arguments on camera count too, and the best 8 seconds of every tape go in the upload, with sound.</li>
     </ul>
-    <p class="keys"><kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>E</kbd> pick up · <kbd>Click</kbd> throw · <kbd>Q</kbd> drop · <kbd>Right click</kbd> film · <kbd>N</kbd> night vision · <kbd>F</kbd> headlamp · <kbd>G</kbd> wave · <kbd>Tab</kbd> crew + van · <kbd>M</kbd> mute</p>
-    <p class="keys">Controller: <kbd>LT</kbd> film · <kbd>RT</kbd> throw · <kbd>X</kbd> pick up · <kbd>B</kbd> drop · <kbd>A</kbd> jump · <kbd>LB</kbd> run · <kbd>RB</kbd> night vision · <kbd>Y</kbd> headlamp · <kbd>D-pad ↑</kbd> wave · <kbd>View</kbd> crew. Phones work too.</p>
+    <p class="keys"><kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>E</kbd> pick up · <kbd>Click</kbd> throw · <kbd>Q</kbd> drop · <kbd>Right click</kbd> film · <kbd>N</kbd> night vision · <kbd>F</kbd> headlamp · <kbd>Z</kbd> emotes (hold) · <kbd>G</kbd> wave · <kbd>Tab</kbd> crew + van · <kbd>M</kbd> mute</p>
+    <p class="keys">Controller: <kbd>LT</kbd> film · <kbd>RT</kbd> throw · <kbd>X</kbd> pick up · <kbd>B</kbd> drop · <kbd>A</kbd> jump · <kbd>LB</kbd> run · <kbd>RB</kbd> night vision · <kbd>Y</kbd> headlamp · <kbd>D-pad</kbd> emotes · <kbd>View</kbd> crew. Phones work too.</p>
     <button id="howBack">Back</button>
   </div>
 </section>
@@ -118,6 +121,7 @@
   <div id="vanArrow" hidden></div>
   <div id="spec" hidden></div>
   <div id="micInd">🎤</div>
+  <div id="don" hidden></div>
   <div id="tabBox" hidden><h3>Crew</h3><div id="tabCrew"></div></div>
 </div>
 <div id="vf">
@@ -128,6 +132,8 @@
   <div id="pops"></div>
 </div>
 <div id="downFx"></div>
+<div id="rainFx"></div>
+<div id="emoteWheel"></div>
 <div id="dangerFx"></div>
 
 <!-- ============ the upload ============ -->
@@ -160,7 +166,7 @@
   <div class="tb top" data-t="pause" style="left:12px">❚❚</div>
   <div class="tb top" data-t="tab" style="left:64px">CREW</div>
   <div class="tb top" data-t="light" style="right:12px">LIGHT</div>
-  <div class="tb top" data-t="wave" style="right:96px">WAVE</div>
+  <div class="tb top" data-t="emote" style="right:96px">EMOTE</div>
   <div class="tb big" data-t="film" style="right:24px;bottom:150px">FILM</div>
   <div class="tb big" data-t="throw" style="right:110px;bottom:110px">THROW</div>
   <div class="tb big" data-t="use" style="right:24px;bottom:64px">USE</div>

@@ -78,7 +78,7 @@ export class Items {
         for (const P of living) {
           if (P.id === it.thrower && g.time - it.throwT < 0.4) continue;
           if (Math.hypot(P.x - it.x, P.z - it.z) < r + 0.38 && it.y < P.y + 1.6 && it.y > P.y - 0.2) {
-            g.knockDown(P.id, 1.4, 'p:' + (it.thrower || ''));
+            g.knockDown(P.id, 1.4, 'p:' + (it.thrower || ''), { x: it.vx, z: it.vz });
             g.sound('bonk', it.x, it.y, it.z);
             it.vx *= -0.3; it.vz *= -0.3; it.vy = 2;
           }

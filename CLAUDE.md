@@ -38,6 +38,8 @@ no currency: views are only the score.
 - `camcorder.js`: filming (right click / LT / touch FILM). Viewfinder shader (grain, tear on `game.danger`, night vision
   N/RB). `tick` every 0.2 s scores what's in frame (worth x act x framing x distance x lit x freshness) and sends `film`
   {id, p, b} every second; `moment(ev)` gives big one-offs (a catch on camera = 450). Fake live chat (`chat.js`).
+- `chaos.js`: **BloodRain** (host plans it ~55% of nights: ev rain warn/on/off + snap `r`; outside = not indoor and >3.2 m from the van: stamina -30/s, battery -2.2/s, red screen, filming x2), **Donations** (host ev req/reqDone/reqEnd every 45-80 s; the camcorder calls `progress`/`moment`; intent `don` {id, cam} -> bonus on that tape), **Bodies** (intents carry / bodyDrop; the host moves dead P (over the carrier's right shoulder, or flying); 2.5 s at the van -> ev revive). While dead, the host ignores a client's st position and the client takes its own from the snap.
+- `emotes.js`: the wheel (hold Z, D-pad, touch EMOTE); `st.e` / snap index 10. Crew.update draws them; models.js also has the ragdoll (`knock(dx, dz)` from ev down/dead dx,dz).
 - `tape.js`: `TapeRec` records 6 fps 192x108 JPEGs + 16 kHz audio of `sfx.recMix` (game sounds, your mic, friends' calls
   weighted by distance) through an AudioWorklet; keeps the best 8 s per camcorder.
 - `review.js`: the upload page (plays clips with sound, comments, the night's numbers, season verdict).
