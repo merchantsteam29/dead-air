@@ -1,0 +1,53 @@
+# DEAD AIR: notes for developers and AI agents
+
+Co-op "friendslop" ghost-hunting game. Plain HTML + ES modules + Three.js 0.160 (import map from a CDN), PeerJS for
+rooms, no build step, no backend. Same stack as Mimic (`../mimic`); `net.js` and `vc.js` are copies of Mimic's
+(room prefix `deadair-v1-`; vc.js adds a per-call `rec` send into `sfx.recMix`).
+
+## Run / test
+`node serve.js` -> http://localhost:8080. URL params: `?test` (exposes `window.__da`, skips the service worker),
+`?autostart` (solo night at once), `?nomic`, `?join=CODE`. Tests in `tools/` (CDP harness, no npm deps): smoke, mp (two
+Chromes over the PeerJS cloud), creatures, mobile, gallery, icons. Headless SwiftShader runs at a few fps and dt is capped
+at 0.05, so wait on `game.time`, not wall time (see `waitGame` in creatures.mjs).
+
+## Flow
+Title -> Play alone (`SoloNet`, this browser is the host) / Host / Join -> lobby -> host `startNight()` broadcasts `start`
+{seed, night, season, quota, seasonViews, crew} -> `Game`. Night ends (`end` {reason leave|time|dead, views, lost, cams,
+dead}) -> every browser sends its highlights (`Session.shareHighlights`, paced `hl` parts: meta, JPEG frames, mu-law audio
+in 16 KB parts; the host relays) and `hlEnd` -> host `review` {keys, info} -> `Review.play` -> host Next night / new season /
+back to lobby. A season is 3 nights (`NIGHTS` in main.js); `quotaFor(season)` scales with crew size. Nothing to unlock,
+no currency: views are only the score.
+
+## Modules (js/)
+- `world.js`: seeded 72x72 grid (1 m cells: GROUND / FLOOR / WALL / EDGE trees / SOLID / DOOR), 3-4 buildings split into
+  rooms (BSP with doorways), the van at the south edge (`van` {x, z, r}: the zone you leave from). `collide`, `los`,
+  `path` (BFS), `clearWalk`, `spot(r, 'in'|'out'|'any')`. `buildScene` draws it (instanced walls and trees, gable roofs).
+  The moon has a shadow map rendered once (`shadowMap.autoUpdate = false`) so insides stay dark.
+- `game.js`: one night. Host: `populate` (camcorders at the van: 1 for 1-2 players, 2 for 3-4; 30 props; 3+night passive
+  anomalies; `schedule` for the dangerous ones), `hostTick` (things, items, rules, `snap` at 15 Hz), `knockDown`, `kill`,
+  `stealFrom`, `noise` (Applause hears it). Everyone: `controls` (FPS movement, stamina, jump, grab/throw/drop, van hold-E
+  after 20 s), `drawPlayers` (Crew models, headlamp SpotLights pool of 3), `voices` (proximity; the dead hear only the
+  dead), HUD, a death cam on the killer, then spectating. Client -> host: st, grab, drop, film, leave. Host -> all: snap, ev, end.
+- `things.js`: `KINDS` (worth + `act` multiplier per state). Host AI in `hostUpdate`; drawn from snapshots in `render`.
+  chair, tv, flamingo (moves only unseen; pecks), wardrobe (knocks, opens when close), balloon (follows), dancer (dances
+  only in a headlamp beam), **applause** (Mr. Applause: wander 0 / hunt 1 / chase 2 / pose 3 when filmed / stunned 4 / bow
+  over a catch 5; hears `P.v` (mic level) and running), **hand** (targets carriers, steals, runs to a far room; stunned 3).
+  `struck(th)` = a thrown thing hit it.
+- `items.js`: camcorders (`cam`: `tape` views, `batt`) and junk; host physics (gravity, bounces, walls, shoves, bonks:
+  >5.5 m/s knocks people down and stuns creatures). holder '' | player id | 'T<thing id>'.
+- `camcorder.js`: filming (right click / LT / touch FILM). Viewfinder shader (grain, tear on `game.danger`, night vision
+  N/RB). `tick` every 0.2 s scores what's in frame (worth x act x framing x distance x lit x freshness) and sends `film`
+  {id, p, b} every second; `moment(ev)` gives big one-offs (a catch on camera = 450). Fake live chat (`chat.js`).
+- `tape.js`: `TapeRec` records 6 fps 192x108 JPEGs + 16 kHz audio of `sfx.recMix` (game sounds, your mic, friends' calls
+  weighted by distance) through an AudioWorklet; keeps the best 8 s per camcorder.
+- `review.js`: the upload page (plays clips with sound, comments, the night's numbers, season verdict).
+- `session.js`: SoloNet / Net + VoiceChat, looks (`info`), message routing, highlight transfer.
+- `input.js`: keyboard/mouse, every controller (raw layouts remapped; wheels and resting axes ignored), touch.
+- `models.js`: Crew (bean with face, mouth flaps with voice level, hats, flop when down/dead), camcorder, props.
+- `audio.js`: all sounds synthesized; `recMix` is what the camcorder hears.
+
+## Rules
+- Level generation must stay deterministic from the seed (every browser builds the map). Use the seeded `shuffle`.
+- A client intent and a host broadcast never share a `t`.
+- Nothing to unlock, no currency or shop (the owner's rule for these games).
+- `[hidden]` is forced with `display: none !important` in style.css (CSS display rules used to beat it).

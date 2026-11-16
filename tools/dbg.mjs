@@ -1,0 +1,15 @@
+import { open, sleep } from './harness.mjs';
+import { spawn } from 'child_process';
+import path from 'path'; import { fileURLToPath } from 'url';
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const port = 8600 + Math.floor(Math.random() * 300);
+const srv = spawn(process.execPath, ['serve.js'], { cwd: root, env: { ...process.env, PORT: port }, stdio: 'ignore' });
+process.env.SH_URL = `http://localhost:${port}/`;
+await sleep(500);
+const { ev, done, url, send } = await open(import.meta.url, { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
+await send('Page.navigate', { url: url + '&autostart' });
+await sleep(6000);
+console.log(await ev(`const t = window.__da.game.tape; window.__cnt = 0; const o = t.audio.bind(t); t.audio = (f) => { window.__cnt += f.length; o(f); }; t.start(99); window.__t0 = performance.now(); return JSON.stringify({ sr: window.__da.sfx.ctx.sampleRate, ratio: t.ratio, state: window.__da.sfx.ctx.state })`));
+await sleep(3000);
+console.log(await ev(`const t = window.__da.game.tape; return JSON.stringify({ secs: (performance.now() - __t0) / 1000, inSamples: __cnt, outSamples: t.seg.n, ctxTime: window.__da.sfx.ctx.currentTime })`));
+srv.kill(); await done();

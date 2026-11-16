@@ -1,0 +1,20 @@
+// Phone (sideways, touch): title, then a night with the touch controls. node tools/mobile.mjs
+import { open, sleep } from './harness.mjs';
+import { spawn } from 'child_process';
+import path from 'path'; import { fileURLToPath } from 'url';
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const port = 8600 + Math.floor(Math.random() * 300);
+const srv = spawn(process.execPath, ['serve.js'], { cwd: root, env: { ...process.env, PORT: port }, stdio: 'ignore' });
+process.env.SH_URL = `http://localhost:${port}/`;
+await sleep(500);
+const { ev, shot, done, tapEl, check } = await open(import.meta.url, { mobile: true });
+await sleep(5000);
+await shot('1-title');
+await tapEl('#btnSolo');
+await sleep(7000);
+check(await ev(`return !!window.__da.game`), 'game started from a tap');
+await shot('2-night');
+await tapEl('[data-t="film"]');
+await sleep(1500);
+await shot('3-film');
+srv.kill(); await done();

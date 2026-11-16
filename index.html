@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>DEAD AIR</title>
+<meta name="theme-color" content="#0b1020">
+<meta name="description" content="A free co-op ghost-hunting game in your browser. Film the weird stuff, get views, don't get taken. Alone or up to 4 friends with proximity voice chat.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DEAD AIR">
+<meta property="og:title" content="DEAD AIR: film the weird, get the views">
+<meta property="og:description" content="Free co-op browser game for 1-4 friends with proximity voice chat. Film ghosts for views. Your screams end up in the upload.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon.svg">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Rubik:wght@400;600;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- ============ title ============ -->
+<section id="title" class="screen" hidden>
+  <div class="logo"><h1>DEAD AIR</h1><span class="dot"></span></div>
+  <p class="tag">Film the weird. Get the views. Don't get taken.</p>
+  <div class="card">
+    <label class="row">Your name <input id="nameIn" maxlength="16" autocomplete="off"></label>
+    <div class="row">Your look <div id="lookPick" class="look"></div></div>
+    <button id="btnSolo" class="big">Play alone</button>
+    <button id="btnHost" class="big alt">Host a crew <small>(up to 4, voice chat)</small></button>
+    <div class="joinRow"><input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off"><button id="btnJoin">Join a crew</button></div>
+    <p id="joinHint" class="hint" hidden>You were invited! Press Join a crew.</p>
+    <div class="small"><button id="btnHow">How to play</button><button id="btnSettings">Settings</button><button id="installApp" style="display:none">Install app</button><button id="pcDownload">Download for PC</button></div>
+    <p id="bestLine" class="hint"></p>
+  </div>
+  <p class="foot">Use headphones. The game uses your microphone: things out there can hear you.</p>
+</section>
+
+<!-- ============ lobby ============ -->
+<section id="lobby" class="screen" hidden>
+  <div class="card wide">
+    <h2>The crew</h2>
+    <p id="lobbyStatus"></p>
+    <div class="code" id="lobbyCode"></div>
+    <div class="joinRow"><input id="lobbyLink" readonly><button id="btnCopy">Copy invite link</button></div>
+    <p id="lobbyRun" class="hint"></p>
+    <ul id="lobbyList"></ul>
+    <div class="row">Your look <div id="lookPick2" class="look"></div></div>
+    <button id="btnStart" class="big">Start night</button>
+    <button id="btnLeaveLobby">Leave</button>
+  </div>
+</section>
+
+<!-- ============ how to play ============ -->
+<section id="howto" class="screen" hidden>
+  <div class="card wide text">
+    <h2>How to play</h2>
+    <p>You're a tiny ghost-hunting channel. Every night the van drops you somewhere abandoned. <b>Find the weird stuff and film it.</b> Every second of good footage is views. Three nights a season; hit the season's view quota or the channel gets terminated.</p>
+    <ul>
+      <li><b>Grab the camcorder</b> at the van. Hold <kbd>Right click</kbd> to film. Weird things in frame, close up and lit, are worth the most. Filming the same thing for ages gets boring for viewers.</li>
+      <li><b>Bring the tape back.</b> When everyone alive is at the van, hold <kbd>E</kbd> to drive away. At 6 a.m. the van leaves anyway. Tapes left out there are lost, and so is anyone outside.</li>
+      <li><b>Mr. Applause</b> hears voices and running. Keep it down. Or don't: if he gets your friend on camera, that's the best footage of the night. A thrown object stuns him.</li>
+      <li><b>The hand</b> steals whatever you're holding. Throw something at it.</li>
+      <li>Your friends' screams, falls and arguments on camera count too, and the best 8 seconds of every tape go in the upload, with sound.</li>
+    </ul>
+    <p class="keys"><kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>E</kbd> pick up · <kbd>Click</kbd> throw · <kbd>Q</kbd> drop · <kbd>Right click</kbd> film · <kbd>N</kbd> night vision · <kbd>F</kbd> headlamp · <kbd>G</kbd> wave · <kbd>Tab</kbd> crew + van · <kbd>M</kbd> mute</p>
+    <p class="keys">Controller: <kbd>LT</kbd> film · <kbd>RT</kbd> throw · <kbd>X</kbd> pick up · <kbd>B</kbd> drop · <kbd>A</kbd> jump · <kbd>LB</kbd> run · <kbd>RB</kbd> night vision · <kbd>Y</kbd> headlamp · <kbd>D-pad ↑</kbd> wave · <kbd>View</kbd> crew. Phones work too.</p>
+    <button id="howBack">Back</button>
+  </div>
+</section>
+
+<!-- ============ settings ============ -->
+<section id="settings" class="screen" hidden>
+  <div class="card wide">
+    <h2>Settings</h2>
+    <div id="setRows" class="setRows"></div>
+    <button id="setBack">Back</button>
+  </div>
+</section>
+
+<!-- ============ pause ============ -->
+<section id="pause" class="screen" hidden>
+  <div class="card">
+    <h2>Paused</h2>
+    <p id="pauseNote" class="hint"></p>
+    <button id="pResume" class="big">Resume</button>
+    <button id="pMute">Mute mic</button>
+    <button id="pSettings">Settings</button>
+    <button id="pLeave">Leave the crew</button>
+  </div>
+</section>
+
+<section id="uploading" class="screen" hidden>
+  <div class="card"><div class="spin"></div><p id="upText">Uploading...</p></div>
+</section>
+<section id="msg" class="screen" hidden>
+  <div class="card"><p id="msgText"></p><button id="msgOk">OK</button></div>
+</section>
+
+<!-- ============ the HUD ============ -->
+<div id="hud" hidden>
+  <div id="hTop"><div id="hNight"></div><div id="hClock"></div><div id="hViews"></div></div>
+  <div id="crosshair"></div>
+  <div id="prompt" hidden></div>
+  <div id="stam"><i></i></div>
+  <div id="toast"></div>
+  <div id="vanArrow" hidden></div>
+  <div id="spec" hidden></div>
+  <div id="micInd">🎤</div>
+  <div id="tabBox" hidden><h3>Crew</h3><div id="tabCrew"></div></div>
+</div>
+<div id="vf">
+  <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+  <div id="vfRec">● REC</div><div id="vfBatt"></div><div id="vfLive"></div><div id="vfNv">NIGHT VISION</div><div id="vfTape"></div>
+  <div class="aim"></div>
+  <div id="chat"></div>
+  <div id="pops"></div>
+</div>
+<div id="downFx"></div>
+<div id="dangerFx"></div>
+
+<!-- ============ the upload ============ -->
+<section id="review" hidden>
+  <header><b class="brand">● DEAD AIR</b><span>uploads</span></header>
+  <div class="rvMain">
+    <div class="rvLeft">
+      <div id="rvPlayer">
+        <canvas id="rvCanvas" width="640" height="360"></canvas>
+        <div class="rvBarBox"><i id="rvBar"></i></div>
+        <button id="rvSkip">Skip ▸▸</button>
+      </div>
+      <div id="rvSummary" hidden>
+        <div id="rvStats"></div>
+        <button id="rvNext" class="big">Next night</button>
+        <button id="rvLobby">End the run</button>
+        <p id="rvWait" class="hint">Waiting for the host...</p>
+      </div>
+      <h2 id="rvTitle"></h2>
+      <p class="rvMeta"><span id="rvViews"></span> · <span id="rvBy"></span></p>
+    </div>
+    <div class="rvRight"><h3>Comments</h3><div id="rvComments"></div></div>
+  </div>
+</section>
+
+<!-- ============ touch ============ -->
+<div id="touch">
+  <div id="tZone"></div>
+  <div id="tStick"><div id="tKnob"></div></div>
+  <div class="tb top" data-t="pause" style="left:12px">❚❚</div>
+  <div class="tb top" data-t="tab" style="left:64px">CREW</div>
+  <div class="tb top" data-t="light" style="right:12px">LIGHT</div>
+  <div class="tb top" data-t="wave" style="right:96px">WAVE</div>
+  <div class="tb big" data-t="film" style="right:24px;bottom:150px">FILM</div>
+  <div class="tb big" data-t="throw" style="right:110px;bottom:110px">THROW</div>
+  <div class="tb big" data-t="use" style="right:24px;bottom:64px">USE</div>
+  <div class="tb" data-t="jump" style="right:110px;bottom:30px">JUMP</div>
+  <div class="tb" data-t="drop" style="right:190px;bottom:40px">DROP</div>
+  <div class="tb" data-t="nv" style="right:190px;bottom:110px">NV</div>
+  <div class="tb" data-t="sprint" style="left:20px;bottom:160px">RUN</div>
+</div>
+
+<script src="install.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

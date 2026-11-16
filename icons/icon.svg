@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#0b1020"/>
+  <circle cx="256" cy="300" r="150" fill="#1d2a1c"/>
+  <rect x="120" y="190" width="230" height="150" rx="22" fill="#2a2a2e"/>
+  <rect x="350" y="215" width="70" height="100" rx="10" fill="#111"/>
+  <circle cx="200" cy="265" r="48" fill="#111"/>
+  <circle cx="200" cy="265" r="30" fill="#3a5a8a"/>
+  <circle cx="186" cy="252" r="9" fill="#9ec1ff"/>
+  <circle cx="310" cy="215" r="14" fill="#ff3b3b"/>
+  <text x="256" y="128" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="78" fill="#f2ede2" stroke="#b81d1d" stroke-width="4">DEAD AIR</text>
+  <text x="256" y="420" text-anchor="middle" font-family="Courier New, monospace" font-weight="700" font-size="44" fill="#ff3b3b">● REC</text>
+</svg>
