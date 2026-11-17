@@ -56,6 +56,12 @@ no currency: views are only the score.
 - `models.js`: Crew (bean with face, mouth flaps with voice level, hats, flop when down/dead), camcorder, props.
 - `audio.js`: all sounds synthesized; `recMix` is what the camcorder hears.
 
+## Performance
+- `node tools/perf.mjs` prints frame time, draw calls and triangles in a few spots (headless numbers: compare before / after only).
+- Every light costs every pixel: headlamp spot lights only for actual friends (`lamps`), 3 fixture lights (events.js pool), no light on the view model or the dog. Never add or remove lights mid-night (shader rebuilds).
+- Repeated level bits are instanced (walls, trees, furniture, lintels, windows, fixtures). `mats.js` `lam(color)` shares plain materials: never change one after creating it.
+- The viewfinder renders at 60% resolution; its DOM text updates 10x a second. Shadows: PCF, the static moon map is drawn once.
+
 ## Rules
 - Level generation must stay deterministic from the seed (every browser builds the map). Use the seeded `shuffle`.
 - A client intent and a host broadcast never share a `t`.

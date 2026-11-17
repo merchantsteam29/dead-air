@@ -6,7 +6,7 @@ import { clamp, angDiff, yawTo, rng, r2 } from './util.js';
 import { MORE, buildMore, hostMore, drawMore } from './creatures2.js';
 import { MORE3, buildMore3, hostMore3, drawMore3 } from './creatures3.js';
 
-const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
+import { lam } from './mats.js';
 
 // worth: views a second at best framing; act(th, gameTime): how much more it's worth right now.
 export const KINDS = {

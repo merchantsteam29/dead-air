@@ -42,7 +42,7 @@ export class Game {
     Object.assign(moon.shadow.camera, { left: -56, right: 56, top: 56, bottom: -56, near: 1, far: 150 });
     moon.shadow.bias = -0.0015; moon.shadow.normalBias = 0.05;
     scene.add(moon, moon.target);
-    this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFShadowMap; this.renderer.shadowMap.autoUpdate = false;
     this.level = buildScene(W, scene);
     this.level.traverse((m) => { if (m.isMesh || m.isInstancedMesh) { m.castShadow = true; m.receiveShadow = true; } });
     this.renderer.shadowMap.needsUpdate = true;
@@ -54,10 +54,10 @@ export class Game {
     this.flash.position.set(0.12, -0.08, 0.1); this.flash.target.position.set(0, -0.3, -5);
     this.camera.add(this.flash, this.flash.target);
     // friends' headlamps (always in the scene, so no shader rebuilds)
-    this.lamps = [0, 1, 2].map(() => { const l = new THREE.SpotLight(0xfff1d0, 0, 22, 0.48, 0.55, 1.1); scene.add(l, l.target); return l; });
+    // (only as many as there are friends: every light costs every pixel)
+    this.lamps = Array.from({ length: Math.max(0, o.crew.length - 1) }, () => { const l = new THREE.SpotLight(0xfff1d0, 0, 22, 0.48, 0.55, 1.1); scene.add(l, l.target); return l; });
     // what I hold, in first person
     this.view = new THREE.Group(); this.camera.add(this.view);
-    this.viewLight = new THREE.PointLight(0xffffff, 0.4, 1.5); this.view.add(this.viewLight); // so it's never pitch black
     this.viewItem = null; this.viewKind = null;
 
     // the crew

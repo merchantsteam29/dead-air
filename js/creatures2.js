@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { Crew, HATS } from './models.js';
 import { clamp, angDiff, yawTo } from './util.js';
 
-const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
+import { lam } from './mats.js';
 const canvasTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
 
 export const MORE = {
@@ -111,7 +111,6 @@ export function buildMore(kind, th) {
     p.legs = [[-0.1, -0.22], [0.1, -0.22], [-0.1, 0.22], [0.1, 0.22]].map(([x, z]) => { const l = new THREE.Group(); l.position.set(x, -0.08, z); const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.25, 2, 5), ghost); m.position.y = -0.17; l.add(m); p.body.add(l); return l; });
     p.tail = new THREE.Group(); p.tail.position.set(0, 0.08, 0.33); const tm = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.22, 2, 5), ghost); tm.position.y = 0.12; p.tail.add(tm); p.tail.rotation.x = -0.6; p.body.add(p.tail);
     p.carry = new THREE.Group(); p.carry.position.set(0, -0.1, -0.2); p.head.add(p.carry);
-    p.glow = new THREE.PointLight(0x9fd8ff, 1.2, 4, 1.5); p.glow.position.y = 0.6; g.add(p.glow);
   }
   g.userData.p = p;
   return g;

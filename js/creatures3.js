@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { clamp, angDiff, yawTo } from './util.js';
 
-const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
+import { lam } from './mats.js';
 
 export const MORE3 = {
   cart:       { worth: 26, name: 'the shopping cart', act: (th) => [0.5, 2.2, 3][th.s] ?? 1, hy: 0.6 },

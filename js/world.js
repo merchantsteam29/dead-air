@@ -382,12 +382,13 @@ export function buildScene(world, scene) {
     prism.position.set(b.x0 + b.w / 2, WALL_H + 0.3 + 0.8, b.z0 + b.h / 2);
     group.add(prism);
   }
-  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-    if (world.grid[z * N + x] !== DOOR) continue;
-    const l = new THREE.Mesh(new THREE.BoxGeometry(1, 0.8, 1), lintelMat);
-    l.position.set(x + 0.5, WALL_H - 0.4, z + 0.5);
-    group.add(l);
-  }
+  const doors = [];
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) if (world.grid[z * N + x] === DOOR) doors.push([x, z]);
+  const lintels = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.8, 1), lintelMat, Math.max(1, doors.length));
+  const lm = new THREE.Matrix4();
+  doors.forEach(([x, z], i) => { lm.makeTranslation(x + 0.5, WALL_H - 0.4, z + 0.5); lintels.setMatrixAt(i, lm); });
+  lintels.count = doors.length;
+  group.add(lintels);
 
   // Trees: a tall dark ring at the edge, single trees inside.
   const treeGeo = new THREE.ConeGeometry(1.4, 5, 6, 1); treeGeo.translate(0, 3.2, 0);
@@ -414,30 +415,33 @@ export function buildScene(world, scene) {
   // ceiling lights (events.js lights the nearest few and turns them off in a power cut)
   // windows on the outside walls: some still lit
   const lit = new THREE.MeshBasicMaterial({ color: 0xffd890 }), dark = new THREE.MeshLambertMaterial({ color: 0x0c1420 });
-  const winGeo = new THREE.PlaneGeometry(0.6, 0.7);
+  const winGeo = new THREE.PlaneGeometry(0.6, 0.7), wins = [[], []], wo = new THREE.Object3D();
   for (let z = 1; z < N - 1; z++) for (let x = 1; x < N - 1; x++) {
     if (world.grid[z * N + x] !== WALL || (x * 7 + z * 3) % 3) continue;
     for (const [dx, dz, ry] of [[0, -1, Math.PI], [0, 1, 0], [-1, 0, -Math.PI / 2], [1, 0, Math.PI / 2]]) {
       if (world.grid[(z + dz) * N + x + dx] !== GROUND) continue;
       if ([[dx, dz], [-dx, -dz]].some(([a, b]) => world.grid[(z + a) * N + x + b] !== WALL)) continue; // not at corners or doors
-      const w = new THREE.Mesh(winGeo, ((x * 13 + z * 29) % 10) < 3 ? lit : dark);
-      w.position.set(x + 0.5 + dx * 0.51, 1.7, z + 0.5 + dz * 0.51); w.rotation.y = ry;
-      group.add(w);
+      wo.position.set(x + 0.5 + dx * 0.51, 1.7, z + 0.5 + dz * 0.51); wo.rotation.set(0, ry, 0); wo.updateMatrix();
+      wins[((x * 13 + z * 29) % 10) < 3 ? 0 : 1].push(wo.matrix.clone());
     }
   }
+  wins.forEach((list, k) => { if (!list.length) return; const im = new THREE.InstancedMesh(winGeo, k ? dark : lit, list.length); list.forEach((mt, i) => im.setMatrixAt(i, mt)); group.add(im); });
   const poleMat = new THREE.MeshLambertMaterial({ color: 0x3a3e44 });
-  for (const fx of world.fixtures) {
-    const mat = new THREE.MeshBasicMaterial({ color: fx.dead ? 0x222222 : 0xfff4d8 });
-    if (fx.post) { // a lamp post
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 3.5, 6), poleMat); pole.position.set(fx.x, 1.75, fx.z); group.add(pole);
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), mat); head.position.set(fx.x, 3.5, fx.z); group.add(head);
-      fx.mat = mat; continue;
-    }
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.3), mat);
-    lamp.position.set(fx.x, WALL_H - 0.05, fx.z);
-    group.add(lamp);
-    fx.mat = mat;
-  }
+  // every light fitting in one instanced mesh; fx.set(on) lights or darkens one (events.js)
+  const fxMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }), world.fixtures.length);
+  const posts = world.fixtures.filter((f) => f.post);
+  const poles = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.07, 0.1, 3.5, 6), poleMat, Math.max(1, posts.length)); poles.count = posts.length;
+  const on = new THREE.Color(0xfff4d8), off = new THREE.Color(0x222222), fm = new THREE.Matrix4(), q0 = new THREE.Quaternion();
+  world.fixtures.forEach((fx, i) => {
+    if (fx.post) fm.compose(new THREE.Vector3(fx.x, 3.5, fx.z), q0, new THREE.Vector3(0.5, 0.12, 0.3));
+    else fm.compose(new THREE.Vector3(fx.x, WALL_H - 0.05, fx.z), q0, new THREE.Vector3(0.9, 0.06, 0.3));
+    fxMesh.setMatrixAt(i, fm);
+    fxMesh.setColorAt(i, fx.dead ? off : on);
+    fx.lit = !fx.dead;
+    fx.set = (v) => { if (v === fx.lit) return; fx.lit = v; fxMesh.setColorAt(i, v ? on : off); fxMesh.instanceColor.needsUpdate = true; };
+  });
+  posts.forEach((fx, i) => { fm.makeTranslation(fx.x, 1.75, fx.z); poles.setMatrixAt(i, fm); });
+  group.add(fxMesh, poles);
   group.add(buildVan(world));
   scene.add(group);
   return group;
@@ -445,6 +449,7 @@ export function buildScene(world, scene) {
 
 // Instanced furniture: hospital beds, school desks (with a chair), shop shelves, tables.
 function buildFurniture(world, group) {
+  // (instanced: one draw call per part, so these get their own materials)
   const lam = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
   const parts = {
     bed: [[new THREE.BoxGeometry(1.9, 0.12, 0.9), lam(0xc8ccd0), 1, 0.5, 0.5], [new THREE.BoxGeometry(1.8, 0.16, 0.85), lam(0xe8ecee), 1, 0.64, 0.5], [new THREE.BoxGeometry(0.35, 0.12, 0.6), lam(0xffffff), 0.3, 0.78, 0.5], [new THREE.BoxGeometry(0.06, 0.9, 0.9), lam(0x9aa0a6), 1.95, 0.45, 0.5]],

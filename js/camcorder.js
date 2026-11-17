@@ -52,7 +52,8 @@ export class Camcorder {
     };
     this.el.chat.innerHTML = '';
     const size = game.renderer.getDrawingBufferSize(new THREE.Vector2());
-    this.rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType });
+    // the viewfinder renders at 60% resolution: it's a grainy camcorder picture anyway
+    this.rt = new THREE.WebGLRenderTarget(Math.ceil(size.x * 0.6), Math.ceil(size.y * 0.6), { type: THREE.HalfFloatType });
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
       uniforms: { tDiffuse: { value: this.rt.texture }, time: { value: 0 }, nv: { value: 0 }, low: { value: 0 }, hit: { value: 0 } },
       vertexShader: VERT, fragmentShader: FRAG, depthTest: false, depthWrite: false,
@@ -65,7 +66,7 @@ export class Camcorder {
 
   resize() {
     const size = this.g.renderer.getDrawingBufferSize(new THREE.Vector2());
-    this.rt.setSize(size.x, size.y);
+    this.rt.setSize(Math.ceil(size.x * 0.6), Math.ceil(size.y * 0.6));
   }
 
   // my camcorder item, if I'm holding one
@@ -101,7 +102,10 @@ export class Camcorder {
       this.quiet = this.rate < 4 ? this.quiet + 1 : 0;
       this.addChat(say(this.quiet > 3 ? 'bored' : busy ? this.lastTag : Math.random() < 0.4 ? this.lastTag : 'idle'));
     }
-    // viewfinder text
+    // viewfinder text (10 times a second is plenty)
+    this.uiT = (this.uiT || 0) - dt;
+    if (this.uiT > 0) { this.frameT -= dt; return; }
+    this.uiT = 0.1;
     const s = Math.floor(this.recSecs), mm = String(Math.floor(s / 60)).padStart(2, '0'), ss = String(s % 60).padStart(2, '0');
     this.el.rec.textContent = `● REC  ${mm}:${ss}`;
     const b = Math.ceil(cam.batt);

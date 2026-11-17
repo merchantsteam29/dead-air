@@ -6,7 +6,7 @@ export const COLORS = [0xe0483a, 0x3a8ee0, 0xf0c030, 0x40c070, 0xb060e0, 0xff8a3
 export const COLOR_NAMES = ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange', 'Teal', 'Pink'];
 export const HATS = ['cap', 'beanie', 'bucket', 'none', 'antenna'];
 
-const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
+import { lam } from './mats.js';
 const BLACK = lam(0x111111), WHITE = new THREE.MeshBasicMaterial({ color: 0xf4f4f4 }), SKIN = lam(0xf1c9a5);
 
 // ---------- the crew ----------

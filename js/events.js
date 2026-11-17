@@ -43,7 +43,7 @@ export class NightEvents {
     if (this.kind === 'bloodmoon') { g.hemi.color.setHex(0xc06060); s.fog.color.setHex(0x1a0808); s.background.setHex(0x1a0808); }
     this.hemiBase = g.hemi.intensity;
     // the light pool for ceiling fixtures
-    this.pool = [0, 1, 2, 3, 4].map(() => { const l = new THREE.PointLight(0xfff0d0, 0, 9, 1.6); l.position.y = 2.7; s.add(l); return l; });
+    this.pool = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xfff0d0, 0, 9, 1.6); l.position.y = 2.7; s.add(l); return l; });
     this.poolT = 0;
   }
 
@@ -78,7 +78,7 @@ export class NightEvents {
       this.poolT = 0.4;
       const c = g.camera.position;
       this.near = fx.filter((f) => !f.dead).map((f) => ({ f, d: Math.hypot(f.x - c.x, f.z - c.z) })).filter((o) => o.d < 22).sort((a, b) => a.d - b.d).slice(0, this.pool.length).map((o) => o.f);
-      for (const f of fx) if (f.mat) f.mat.color.setHex(f.dead || !this.power ? 0x222222 : 0xfff4d8);
+      for (const f of fx) if (!f.flicker || !this.power || f.dead) f.set?.(!f.dead && this.power);
     }
     this.pool.forEach((l, i) => {
       const f = this.near?.[i];
@@ -86,7 +86,7 @@ export class NightEvents {
       l.position.set(f.x, (f.y ?? 2.7) - 0.15, f.z); l.distance = f.post ? 15 : 9;
       const fl = f.flicker ? (Math.random() < 0.08 ? 0.1 : 1) : 1;
       l.intensity = (f.post ? 7 : 3.2) * fl;
-      if (f.mat && f.flicker) f.mat.color.setHex(fl < 0.5 ? 0x222222 : 0xfff4d8);
+      if (f.flicker) f.set?.(fl > 0.5);
     });
   }
   // headlamps stutter when the power goes
