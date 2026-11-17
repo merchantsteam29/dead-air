@@ -4,20 +4,23 @@ import { clamp } from './util.js';
 
 export const COLORS = [0xe0483a, 0x3a8ee0, 0xf0c030, 0x40c070, 0xb060e0, 0xff8a30, 0x30d0d0, 0xf070b0];
 export const COLOR_NAMES = ['Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange', 'Teal', 'Pink'];
-export const HATS = ['cap', 'beanie', 'bucket', 'none', 'antenna'];
+export const HATS = ['cap', 'beanie', 'bucket', 'none', 'antenna', 'tophat', 'party', 'headphones', 'crown'];
+export const OUTFITS = ['plain', 'hoodie', 'suit', 'hazmat', 'overalls'];
+export const ACCS = ['none', 'glasses', 'mustache', 'scarf', 'backpack'];
 
 import { lam } from './mats.js';
 const BLACK = lam(0x111111), WHITE = new THREE.MeshBasicMaterial({ color: 0xf4f4f4 }), SKIN = lam(0xf1c9a5);
 
 // ---------- the crew ----------
 export class Crew {
-  constructor(colorIdx = 0, hat = 'cap') {
+  constructor(colorIdx = 0, hat = 'cap', outfit = 'plain', acc = 'none') {
     const color = COLORS[colorIdx % COLORS.length];
     this.root = new THREE.Group();
     this.tilt = new THREE.Group(); this.root.add(this.tilt);
     const suit = lam(color), dark = lam(new THREE.Color(color).multiplyScalar(0.55).getHex());
     // body + head in one bean
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.62, 4, 10), suit);
+    const bodyMat = outfit === 'suit' ? lam(0x2a2a32) : outfit === 'hazmat' ? lam(0xe0c820) : suit;
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.62, 4, 10), bodyMat);
     body.position.y = 0.78; this.tilt.add(body);
     const face = new THREE.Mesh(new THREE.CircleGeometry(0.2, 14), SKIN);
     face.position.set(0, 1.12, -0.322); face.rotation.y = Math.PI; face.scale.set(1.15, 0.9, 1); this.tilt.add(face);
@@ -40,10 +43,12 @@ export class Crew {
     const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.05, 8), this.lampMat); lamp.rotation.x = Math.PI / 2; lamp.position.set(0, 1.28, -0.31); this.tilt.add(lamp);
     this.lamp = new THREE.Object3D(); this.lamp.position.set(0, 1.28, -0.34); this.tilt.add(this.lamp);
     this.addHat(hat, dark, suit);
+    this.addOutfit(outfit, suit, dark);
+    this.addAcc(acc, suit);
     // arms and legs on pivots
     const limb = (len, r, mat) => { const g = new THREE.CapsuleGeometry(r, len, 3, 6); g.translate(0, -len / 2 - r * 0.5, 0); return new THREE.Mesh(g, mat); };
     this.arms = [-1, 1].map((sx) => {
-      const piv = new THREE.Group(); piv.position.set(sx * 0.36, 0.98, 0); piv.add(limb(0.3, 0.07, suit));
+      const piv = new THREE.Group(); piv.position.set(sx * 0.36, 0.98, 0); piv.add(limb(0.3, 0.07, outfit === 'suit' || outfit === 'hazmat' ? bodyMat : suit));
       const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), SKIN); hand.position.y = -0.46; piv.add(hand);
       this.tilt.add(piv); return piv;
     });
@@ -60,8 +65,42 @@ export class Crew {
     if (hat === 'cap') { const c = new THREE.Mesh(new THREE.SphereGeometry(0.31, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), dark); g.add(c); const b = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.22), dark); b.position.set(0, 0.01, -0.33); g.add(b); }
     if (hat === 'beanie') { const c = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), dark); c.scale.y = 1.25; g.add(c); const p = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), lam(0xf4f4f4)); p.position.y = 0.4; g.add(p); }
     if (hat === 'bucket') { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 0.2, 12), dark); c.position.y = 0.1; g.add(c); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.03, 14), dark); b.position.y = 0.01; g.add(b); }
+    if (hat === 'tophat') { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.03, 14), BLACK); g.add(b); const c = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.38, 14), BLACK); c.position.y = 0.2; g.add(c); const r = new THREE.Mesh(new THREE.CylinderGeometry(0.245, 0.245, 0.06, 14), suit); r.position.y = 0.06; g.add(r); }
+    if (hat === 'party') { const c = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.42, 12), suit); c.position.set(0.05, 0.16, 0); c.rotation.z = -0.2; g.add(c); const p = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), lam(0xffffff)); p.position.set(0.1, 0.38, 0); g.add(p); }
+    if (hat === 'headphones') { const b = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.03, 6, 16, Math.PI), BLACK); b.position.y = -0.1; g.add(b); for (const sx of [-1, 1]) { const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 12), suit); cup.rotation.z = Math.PI / 2; cup.position.set(sx * 0.32, -0.14, 0); g.add(cup); } }
+    if (hat === 'crown') { const gold = lam(0xe8b830); const c = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.12, 10, 1, true), gold); c.position.y = 0.04; g.add(c); for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2, s = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 4), gold); s.position.set(Math.cos(a) * 0.22, 0.15, Math.sin(a) * 0.22); g.add(s); } const jw = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), lam(0xd02040)); jw.position.set(0, 0.06, -0.235); g.add(jw); }
     if (hat === 'antenna') { const s = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.35), BLACK); s.position.y = 0.2; g.add(s); const b = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff4040 })); b.position.y = 0.4; g.add(b); }
     this.tilt.add(g);
+  }
+
+  addOutfit(o, suit, dark) {
+    const t = this.tilt;
+    if (o === 'hoodie') {
+      const hood = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.07, 6, 14, Math.PI), dark); hood.position.set(0, 1.08, 0.16); hood.rotation.set(Math.PI / 2 - 0.3, 0, 0); t.add(hood);
+      const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.04), dark); pocket.position.set(0, 0.6, -0.31); t.add(pocket);
+      for (const sx of [-1, 1]) { const st = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.16), lam(0xf4f4f4)); st.position.set(sx * 0.06, 0.88, -0.33); t.add(st); }
+    }
+    if (o === 'suit') {
+      const shirt = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.34, 0.02), lam(0xf4f4f4)); shirt.position.set(0, 0.78, -0.315); t.add(shirt);
+      const tie = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.02), suit); tie.position.set(0, 0.76, -0.328); t.add(tie);
+    }
+    if (o === 'hazmat') {
+      const visor = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 6, 16), lam(0x333333)); visor.position.set(0, 1.12, -0.31); t.add(visor);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.08, 14, 1, true), suit); band.position.y = 0.55; t.add(band);
+    }
+    if (o === 'overalls') {
+      const denim = lam(0x3a5a8a);
+      const pants = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.335, 0.42, 14), denim); pants.position.y = 0.48; t.add(pants);
+      const bib = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.03), denim); bib.position.set(0, 0.76, -0.31); t.add(bib);
+      for (const sx of [-1, 1]) { const s = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.03), denim); s.position.set(sx * 0.12, 0.98, -0.3); t.add(s); }
+    }
+  }
+  addAcc(a, suit) {
+    const t = this.tilt;
+    if (a === 'glasses') { for (const sx of [-1, 1]) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 4, 12), BLACK); r.position.set(sx * 0.085, 1.16, -0.4); t.add(r); } const br = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.012, 0.012), BLACK); br.position.set(0, 1.17, -0.4); t.add(br); }
+    if (a === 'mustache') { for (const sx of [-1, 1]) { const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.022, 0.07, 3, 6), lam(0x2a1a10)); m.rotation.z = sx * 1.2; m.position.set(sx * 0.04, 1.07, -0.335); t.add(m); } }
+    if (a === 'scarf') { const sc = lam(0xd84040 === suit.color?.getHex?.() ? 0x40a0d8 : 0xd84040); const ring = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.06, 6, 16), sc); ring.rotation.x = Math.PI / 2; ring.position.y = 0.98; t.add(ring); const tail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.04), sc); tail.position.set(0.12, 0.82, -0.31); tail.rotation.z = 0.15; t.add(tail); }
+    if (a === 'backpack') { const bp = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.46, 0.2), lam(0x5a4a3a)); bp.position.set(0, 0.8, 0.38); t.add(bp); const pk = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.06), lam(0x4a3a2a)); pk.position.set(0, 0.68, 0.5); t.add(pk); }
   }
 
   // what's in the right hand: a model (camcorder / prop) or null
@@ -187,8 +226,13 @@ const PROPS = {
   ball: { r: 0.18, build() { return new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), lam(0xd02a2a)); } },
   book: { r: 0.16, build() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.3), lam(0x2a5a9a))); const p = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.29), lam(0xf0ead8)); p.position.x = 0.012; g.add(p); return g; } },
   globe: { r: 0.2, build() { const g = new THREE.Group(); const s = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8), lam(0x3a8ac8)); s.position.y = 0.06; g.add(s); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.05, 8), lam(0x6a4a2a)); b.position.y = -0.14; g.add(b); return g; } },
+  walkie: { r: 0.14, build() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.05), lam(0x1a1a1a))); const a = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.14), lam(0x333333)); a.position.set(0.025, 0.16, 0); g.add(a); const l = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.01), new THREE.MeshBasicMaterial({ color: 0x40ff40 })); l.position.set(-0.02, 0.07, -0.027); g.add(l); return g; } },
+  emf: { r: 0.14, build() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.04), lam(0xe8c020))); for (let i = 0; i < 5; i++) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.014, 0.01), new THREE.MeshBasicMaterial({ color: [0x30c030, 0x30c030, 0xe0c030, 0xe08030, 0xe03030][i] })); l.position.set(-0.032 + i * 0.016, 0.07, -0.022); g.add(l); } return g; } },
+  flash: { r: 0.14, build() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.09, 0.05), lam(0x2a6ad0))); const f = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.01), lam(0xf4f4f4)); f.position.set(0.04, 0.025, -0.028); g.add(f); const ln = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.02, 10), lam(0x111111)); ln.rotation.x = Math.PI / 2; ln.position.set(-0.03, 0, -0.03); g.add(ln); return g; } },
+  battery: { r: 0.12, build() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.18, 10), lam(0x1a1a1a))); const t = new THREE.Mesh(new THREE.CylinderGeometry(0.051, 0.051, 0.06, 10), lam(0xd8a020)); t.position.y = 0.06; g.add(t); const n = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.02, 8), lam(0xcccccc)); n.position.y = 0.1; g.add(n); return g; } },
 };
 export const PROP_KINDS = Object.keys(PROPS);
+export const GADGETS = ['walkie', 'emf', 'flash', 'battery'];
 export const BASIC_PROPS = ['chair', 'bucket', 'box', 'cone', 'duck', 'tire', 'gnome', 'bottle', 'radio', 'pumpkin'];
 export const propRadius = (k) => (k === 'cam' ? 0.18 : PROPS[k]?.r || 0.25);
 export function makeProp(kind) {

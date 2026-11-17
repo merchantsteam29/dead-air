@@ -1,5 +1,6 @@
 // Your channel: what this device has filmed (localStorage only, nothing to unlock). Recorded after every upload.
 import { fmt } from './util.js';
+const VAN = [5000, 15000, 30000, 60000, 120000], VAN_PERKS = ['stickers', 'fairy lights + a brighter van light', 'a neon sign + a spare battery every night', 'flames + a bigger zone to leave from', 'gold trim + a second flash camera'];
 
 const KEY = 'deadair.stats';
 const blank = () => ({ nights: 0, views: 0, best: null, taken: 0, revived: 0, renewed: 0, cancelled: 0, longest: 0, places: {}, uploads: [] });
@@ -42,6 +43,7 @@ export function renderChannel(el, name, color) {
       <div><b>${s.revived}</b><span>times revived</span></div>
     </div>
     ${Object.keys(s.places).length ? `<p class="hint">Filmed at: ${Object.entries(s.places).map(([k, n]) => `${places[k] || k} ${n}`).join(' · ')}</p>` : ''}
+    <p class="vanLine">🚐 Van level ${VAN.filter((v) => s.views >= v).length} of 5${VAN.filter((v) => s.views >= v).length ? ': ' + VAN_PERKS.slice(0, VAN.filter((v) => s.views >= v).length).join(', ') : ''}.${VAN.find((v) => s.views < v) ? ` Next at ${fmt(VAN.find((v) => s.views < v))} views: ${VAN_PERKS[VAN.filter((v) => s.views >= v).length]}.` : ' Fully upgraded!'}</p>
     <h3>Uploads</h3>
     <div class="chList">${s.uploads.length ? s.uploads.map((u) => `<div><span class="thumb">▶</span><div><b>${esc(u.title)}</b><small>${fmt(u.views)} views · ${u.date}${u.dead ? ` · 💀 ${u.dead}` : ''}</small></div></div>`).join('') : '<p class="hint">Nothing yet. Go film something.</p>'}</div>`;
 }

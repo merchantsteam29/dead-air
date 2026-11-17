@@ -88,7 +88,7 @@ export class Camcorder {
     if (!this.aiming) { this.rate *= Math.exp(-dt * 0.5); return; }
     if (toggleNv) { this.nv = !this.nv; g.sfx.play('click'); if (this.nv) this.addChat(say('nv')); }
     // battery (mine to run down while I hold it; the host keeps the number)
-    cam.batt = Math.max(0, cam.batt - dt * (this.nv ? 0.6 : 0.32) - (g.rain?.outside ? dt * 2.2 : 0)); // blood rain eats batteries
+    cam.batt = Math.max(0, cam.batt - dt * (this.nv ? 0.6 : 0.32) * (g.role === 'camop' ? 0.6 : 1) - (g.rain?.outside ? dt * 2.2 : 0)); // blood rain eats batteries; the camera op's last longer
     this.recSecs += dt;
     this.tickT -= dt;
     if (this.tickT <= 0) { this.tickT = 0.2; this.tick(cam); }
@@ -204,7 +204,7 @@ export class Camcorder {
       if (P.emote) add((P.emote === 'dance' ? 7 : 5) * 0.2, P.emote === 'dance' || P.emote === 'flex' ? 'dance' : P.emote === 'scream' ? 'scream' : P.emote === 'sit' ? 'idle' : 'wave');
       if (P.carrying) add(4 * 0.2, 'carry');
     }
-    if (g.me && g.me.v > 0.1) add(3 * 0.2, 'narrate');
+    if (g.me && g.me.v > 0.1) add((g.role === 'host' ? 9 : 3) * 0.2, 'narrate'); // the Host's commentary pays
     // out in the blood rain: everything is worth double
     if (g.rain?.exposed(c.x, c.z)) { pts *= 2; add(2 * 0.2, 'rain'); }
     pts *= g.events?.mult || 1; // fog x1.3, blood moon x2

@@ -31,6 +31,10 @@ export class Items {
     this.list.push(it); this.byId.set(it.id, it);
     return it;
   }
+  removeItem(it) {
+    this.list = this.list.filter((i) => i !== it); this.byId.delete(it.id);
+    if (it.model?.parent) it.model.parent.remove(it.model);
+  }
   heldBy(id) { return this.list.find((i) => i.holder === id) || null; }
   carriedBy(holder) { for (const i of this.byId.values()) if (i.holder === holder) return i; return null; }
 
@@ -150,6 +154,7 @@ export class Items {
 
   // ---- everyone ----
   applySnap(arr) {
+    const stamp = (this.stamp = (this.stamp || 0) + 1);
     for (const [id, k, x, y, z, yaw, holder, batt, tape, h] of arr) {
       let it = this.byId.get(id);
       if (!it) { it = { id, kind: ITEM_KINDS[k], x, y, z, yaw, holder, batt, tape }; if (!this.g.isHost) this.list.push(it); this.byId.set(id, it); }
@@ -157,7 +162,10 @@ export class Items {
       it.h = h || 0; // haunted: 1 asleep, 2 floating, 3 flying, 4 resting
       if (!this.g.isHost) Object.assign(it, { x, y, z, yaw, holder, batt: holder === this.g.myId && it.holder === holder ? Math.min(it.batt, batt) : batt, tape });
       if (!it.model) { it.model = makeProp(it.kind); it.rx = x; it.ry = y; it.rz = z; it.ryaw = yaw; this.group.add(it.model); }
+      it.seen = stamp;
     }
+    // gone (a battery used up): drop it everywhere
+    for (const it of [...this.byId.values()]) if (it.seen !== stamp) this.removeItem(it);
   }
 
   render(dt) {

@@ -3,6 +3,7 @@
 import { Net, newCode, cleanCode, cleanName } from './net.js';
 import { VoiceChat } from './vc.js';
 import { muEncode, muDecode, bytesOf } from './util.js';
+import { HATS, OUTFITS, ACCS } from './models.js';
 
 export class SoloNet {
   constructor(name) { this.isHost = true; this.id = 'h'; this.code = null; this.peer = null; this.roster = [{ id: 'h', name: cleanName(name), peer: null }]; this.onMessage = () => {}; this.onRoster = () => {}; this.onClose = () => {}; this.locked = false; }
@@ -14,7 +15,7 @@ export class SoloNet {
 }
 
 const FLOW = new Set(['start', 'review', 'lobby', 'season']);
-const GAME = new Set(['st', 'grab', 'drop', 'film', 'leave', 'carry', 'bodyDrop', 'don', 'snap', 'ev', 'end', 'quit']);
+const GAME = new Set(['st', 'grab', 'drop', 'film', 'leave', 'carry', 'bodyDrop', 'don', 'use', 'snap', 'ev', 'end', 'quit']);
 
 export class Session {
   constructor({ sfx, mic, name, look }) {
@@ -91,7 +92,7 @@ export class Session {
   }
 
   crew() {
-    return this.net.roster.map((r, i) => ({ id: r.id, name: r.name, color: this.info[r.id]?.color ?? i, hat: this.info[r.id]?.hat ?? 'cap' }));
+    return this.net.roster.map((r, i) => ({ id: r.id, name: r.name, color: this.info[r.id]?.color ?? i, hat: this.info[r.id]?.hat ?? 'cap', outfit: this.info[r.id]?.outfit ?? 'plain', acc: this.info[r.id]?.acc ?? 'none', role: this.info[r.id]?.role ?? 'camop' }));
   }
 
   // ---------- highlights ----------
@@ -156,6 +157,7 @@ export class Session {
   }
 }
 
+export const ROLES = ['camop', 'host', 'runner', 'tech'];
 export function cleanLook(l) {
-  return { color: Math.max(0, Math.min(7, (l?.color | 0))), hat: ['cap', 'beanie', 'bucket', 'none', 'antenna'].includes(l?.hat) ? l.hat : 'cap' };
+  return { color: Math.max(0, Math.min(7, (l?.color | 0))), hat: HATS.includes(l?.hat) ? l.hat : 'cap', outfit: OUTFITS.includes(l?.outfit) ? l.outfit : 'plain', acc: ACCS.includes(l?.acc) ? l.acc : 'none', role: ROLES.includes(l?.role) ? l.role : 'camop' };
 }

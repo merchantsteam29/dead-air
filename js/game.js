@@ -5,6 +5,8 @@
 import * as THREE from 'three';
 import { World, buildScene } from './world.js';
 import { Crew, makeProp, BASIC_PROPS } from './models.js';
+export const VAN_LEVELS = [5000, 15000, 30000, 60000, 120000];
+export const vanLevel = (views) => VAN_LEVELS.filter((v) => views >= v).length;
 import { Things } from './things.js';
 import { Items } from './items.js';
 import { Camcorder } from './camcorder.js';
@@ -35,6 +37,9 @@ export class Game {
     scene.fog = new THREE.FogExp2(0x0b1020, 0.034);
     this.hemi = new THREE.HemisphereLight(0x8090c0, 0x202018, 0.3); scene.add(this.hemi);
     this.world = new World(this.seed);
+    this.vanLvl = o.vanLvl || 0;
+    this.world.vanLvl = this.vanLvl;
+    if (this.vanLvl >= 4) this.world.van.r = 6.5; // perk: a bigger leave zone
     const W = this.world;
     const moon = new THREE.DirectionalLight(0xa8b8ff, 0.95);
     moon.position.set(W.W / 2 + 20, 60, W.H / 2 + 10); moon.target.position.set(W.W / 2, 0, W.H / 2);
@@ -65,12 +70,14 @@ export class Game {
     o.crew.forEach((c, i) => {
       const P = { id: c.id, name: c.name, color: c.color, hat: c.hat, x: W.van.x + (i % 2 ? 2.4 : -2.4), y: 0, z: W.van.z - 2 + Math.floor(i / 2) * 1.6, yaw: 0, pitch: 0, vx: 0, vz: 0, v: 0, aim: false, flash: true, run: false, wave: false, nv: false, down: false, dead: false, downUntil: 0, emote: null, carrier: null, carrying: null };
       P.rx = P.x; P.rz = P.z; P.ry = 0; P.ryaw = 0; P.stepD = 0; P.slot = -1;
-      if (c.id !== this.myId) { P.model = new Crew(c.color, c.hat); scene.add(P.model.root); P.slot = this.players.size - (this.players.has(this.myId) ? 1 : 0); }
+      P.role = c.role || 'camop';
+      if (c.id !== this.myId) { P.model = new Crew(c.color, c.hat, c.outfit, c.acc); scene.add(P.model.root); P.slot = this.players.size - (this.players.has(this.myId) ? 1 : 0); }
       this.players.set(c.id, P);
     });
     let slot = 0; for (const P of this.players.values()) if (P.id !== this.myId) P.slot = slot++;
     this.me = this.players.get(this.myId);
     const me = this.me;
+    this.role = me.role; // camop: battery lasts longer · host: talking on camera pays 3x · runner: stamina, speed · tech: built-in EMF, sees the Critic
     this.p = { emote: null, emoteT: 0, vy: 0, ground: true, stam: 100, downT: 0, stepD: 0, bob: 0, holdE: 0, waveT: 0, flash: true, spec: 0, roll: 0, eye: EYE };
 
     this.things = new Things(this);
@@ -112,6 +119,11 @@ export class Game {
     // camcorders at the van
     const cams = nCrew <= 2 ? 1 : 2;
     for (let i = 0; i < cams; i++) I.add('cam', W.van.x + 1.7 + i * 0.7, W.van.z + 3.3);
+    // the van's kit: two walkie-talkies, an EMF meter, a flash camera (3 shots), a spare battery (+ van perks)
+    const kit = ['walkie', 'walkie', 'emf', 'flash', 'battery'];
+    if (this.vanLvl >= 3) kit.push('battery');
+    if (this.vanLvl >= 5) kit.push('flash');
+    kit.forEach((k, i) => I.add(k, W.van.x - 1.7 - (i % 3) * 0.6, W.van.z + 3.1 + Math.floor(i / 3) * 0.6, k === 'flash' ? { batt: 3 } : {}));
     // junk
     const junk = W.T.props ? [...BASIC_PROPS, ...W.T.props, ...W.T.props, ...W.T.props] : BASIC_PROPS;
     for (let i = 0; i < 30; i++) { const s = W.spot(r, 'any', 6); const it = I.add(pick(r, junk), s.x, s.z); if (i < Math.min(6, 2 + this.night)) it.haunt = true; } // the first few are possessed
@@ -240,6 +252,7 @@ export class Game {
       case 'carry': this.bodies.hostCarry(P, m.id); break;
       case 'bodyDrop': this.bodies.hostDrop(P, m); break;
       case 'don': this.dons.hostClaim(P, m); break;
+      case 'use': this.hostUse(P, m.id); break;
       case 'drop': { const it = this.items.release(P, m); if (it && Math.hypot(m.vx || 0, m.vz || 0) > 5) this.sound('whoosh', P.x, 1.3, P.z); break; }
       case 'film': {
         const it = this.items.byId.get(m.id);
@@ -249,8 +262,37 @@ export class Game {
       case 'leave': if (!this.over && this.time > 20 && this.everyoneIn()) this.end('leave'); break;
     }
   }
-  flagsIn(P, f) { P.aim = !!(f & 1); P.flash = !!(f & 2); P.run = !!(f & 4); P.wave = !!(f & 8); P.nv = !!(f & 16); }
-  flagsOut(P) { return (P.aim ? 1 : 0) | (P.flash ? 2 : 0) | (P.run ? 4 : 0) | (P.wave ? 8 : 0) | (P.nv ? 16 : 0); }
+  flagsIn(P, f) { P.aim = !!(f & 1); P.flash = !!(f & 2); P.run = !!(f & 4); P.wave = !!(f & 8); P.nv = !!(f & 16); P.radio = !!(f & 32); }
+  flagsOut(P) { return (P.aim ? 1 : 0) | (P.flash ? 2 : 0) | (P.run ? 4 : 0) | (P.wave ? 8 : 0) | (P.nv ? 16 : 0) | (P.radio ? 32 : 0); }
+
+  // A gadget used (host): the flash camera stuns what's in front; a battery tops up a camcorder close by.
+  hostUse(P, id) {
+    const it = this.items.byId.get(id);
+    if (!it || it.holder !== P.id || P.dead) return;
+    if (it.kind === 'flash' && it.batt > 0) {
+      it.batt--;
+      this.event({ k: 'flashed', id: P.id, x: r2(P.x), z: r2(P.z) });
+      for (const th of [...this.things.list]) {
+        const dx = th.x - P.x, dz = th.z - P.z, d = Math.hypot(dx, dz);
+        if (d > 9 || Math.abs(angDiff(P.yaw, Math.atan2(-dx, -dz))) > 0.6 || !this.world.los(P.x, P.z, th.x, th.z)) continue;
+        const was = th.s;
+        if (th.kind === 'applause' && th.s !== 5 && th.s !== 6) { th.s = 4; th.t = 0; }
+        else if (th.kind === 'hand' && th.s !== 3) { if (th.s === 2) this.dropFromThing(th); th.s = 3; th.t = 0; }
+        else if (th.kind === 'intern' && th.s <= 2) { th.s = 3; th.t = 0; }
+        else if (th.kind === 'mascot' && (th.s === 1 || th.s === 2)) { th.s = 4; th.t = 0; }
+        else if (th.kind === 'critic' && th.s !== 2) { th.s = 2; th.t = 0; this.sound('shriek', th.x, 1.8, th.z); }
+        else if (th.kind === 'cart') { th.s = 2; th.t = 0; }
+        if (th.s !== was) this.event({ k: 'struck', id: th.id });
+      }
+    }
+    if (it.kind === 'battery') {
+      const cam = this.items.list.find((c) => c.kind === 'cam' && Math.hypot(c.x - P.x, c.z - P.z) < 2.6 && c.batt < 100);
+      if (!cam) return;
+      cam.batt = Math.min(100, cam.batt + 60);
+      this.items.removeItem(it);
+      this.event({ k: 'charged', cam: cam.id, b: Math.round(cam.batt), by: P.id });
+    }
+  }
 
   everyoneIn() { const L = this.living(); return L.length > 0 && L.every((P) => this.world.inVan(P.x, P.z)); }
 
@@ -304,6 +346,8 @@ export class Game {
       else if (P) this.toast(`${P.name} is back!`, 3);
     }
     if (e.k === 'rain') this.rain.onEvent(e);
+    if (e.k === 'flashed') { this.sfx.play('camflash', { x: e.x, y: 1.5, z: e.z }); if (e.id === this.myId) { const f = document.getElementById('flashFx'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); } }
+    if (e.k === 'charged') { const c = this.items.byId.get(e.cam); if (c) c.batt = e.b; if (e.by === this.myId || c?.holder === this.myId) this.toast(`Camcorder battery ${e.b}%`, 2); this.sfx.play('views'); }
     if (e.k === 'cancel') { if (e.id === this.myId) { this.toast(`The Critic CANCELLED you. -${fmt(e.lost)} views.`, 4); this.sfx.play('bad'); } else this.toast(`${this.players.get(e.id)?.name || 'Someone'} got cancelled by the Critic.`, 3); }
     if (e.k === 'exposed') { this.toast('That is NOT one of the crew!!', 3); this.sfx.play('sting'); }
     if (e.k === 'req' || e.k === 'reqDone' || e.k === 'reqEnd') this.dons.onEvent(e);
@@ -343,6 +387,9 @@ export class Game {
     }
     this.things.hostUpdate(dt);
     this.items.hostUpdate(dt);
+    // walkie static: wherever another walkie is, the monsters can hear it
+    this.radioT = (this.radioT || 0) - dt;
+    if (this.radioT <= 0) { this.radioT = 1; for (const P of this.living()) if (P.radio) for (const Q of this.living()) if (Q !== P && this.items.heldBy(Q.id)?.kind === 'walkie') this.noise(Q.x, Q.z, 11); }
     this.bodies.hostTick(dt);
     this.rain.hostTick(dt);
     this.dons.hostTick(dt);
@@ -409,9 +456,9 @@ export class Game {
     const aimWant = !down && !body && (I.rmb || (pad && pad.aim));
     const wantRun = !down && (k('ShiftLeft') || k('ShiftRight') || (pad && pad.sprint)) && mz > 0.3 && !this.cam.aiming;
     const run = wantRun && p.stam > 0 && !p.tired;
-    p.stam = clamp(p.stam + (run ? -22 : 14) * dt - (this.rain.outside ? 30 * dt : 0), 0, 100);
+    p.stam = clamp(p.stam + (run ? (this.role === 'runner' ? -13 : -22) : 14) * dt - (this.rain.outside ? 30 * dt : 0), 0, 100);
     if (p.stam <= 0) p.tired = true; if (p.tired && p.stam > 35) p.tired = false;
-    let speed = run ? RUN : WALK;
+    let speed = run ? (this.role === 'runner' ? RUN * 1.12 : RUN) : WALK;
     if (held && held.kind !== 'cam') speed *= 0.88;
     if (body) speed *= 0.72;
     if (this.cam.aiming) speed *= 0.6;
@@ -445,7 +492,8 @@ export class Game {
       if (body && (I.hit('KeyQ') || (pad && pad.drop))) this.dropBody(2);
       if (body && (I.lmbHit || (pad && pad.throw))) this.dropBody(8);
       if (held && (I.hit('KeyQ') || (pad && pad.drop))) this.throwIt(held, 2.5);
-      if (held && held.kind !== 'cam' && (I.lmbHit || (pad && pad.throw))) this.throwIt(held, 13);
+      if (held && (held.kind === 'flash' || held.kind === 'battery') && (I.lmbHit || (pad && pad.throw))) { this.send({ t: 'use', id: held.id }); if (held.kind === 'battery' && !this.items.list.some((c) => c.kind === 'cam' && Math.hypot(c.rx - me.x, c.rz - me.z) < 2.6)) this.toast('Get next to a camcorder (on the ground or in a friend\'s hands) to swap the battery.', 3); }
+      else if (held && held.kind !== 'cam' && (I.lmbHit || (pad && pad.throw))) this.throwIt(held, 13);
       if (held && held.kind === 'cam' && !this.cam.aiming && (I.lmbHit || (pad && pad.throw))) this.throwIt(held, 9);
       // the van: hold E with everyone in
       const inVan = W.inVan(me.x, me.z), holdE = k('KeyE') || (pad && pad.useHeld);
@@ -459,6 +507,8 @@ export class Game {
     if (p.emote && (p.emoteT <= 0 || down || ((p.emote === 'dance' || p.emote === 'sit') && (Math.hypot(mx, mz) > 0.2 || !p.ground)))) p.emote = null;
     me.emote = p.emote; me.wave = p.emote === 'wave';
     me.flash = p.flash;
+    me.radio = held?.kind === 'walkie' && me.v > 0.06;
+    this.gadgetHud(dt, held);
     this.cam.update(dt, aimWant, !down && (I.hit('KeyN') || (pad && pad.nv)));
     me.aim = this.cam.aiming; me.nv = this.cam.nv;
     // camera
@@ -473,6 +523,24 @@ export class Game {
     this.flash.intensity = p.flash ? 14 * this.events.lampK() : 0;
     this.sfx.setListener(this.camera.position.x, this.camera.position.y, this.camera.position.z, me.yaw);
     this.sfx.ambient(dt, W.indoor(me.x, me.z));
+  }
+
+  // the EMF meter (held, or always for the Tech): lights and beeps faster the closer something weird is
+  gadgetHud(dt, held) {
+    const el = this.hud.emf || (this.hud.emf = document.getElementById('emf'));
+    const show = held?.kind === 'emf' || this.role === 'tech';
+    el.hidden = !show || this.me.dead;
+    const fl = held?.kind === 'flash' ? held.batt : null;
+    const fe = this.hud.flashN || (this.hud.flashN = document.getElementById('flashN'));
+    fe.hidden = fl === null; if (fl !== null) fe.textContent = `📸 ${fl} flash${fl === 1 ? '' : 'es'} left`;
+    if (!show) return;
+    let d = 99;
+    for (const th of this.things.byId.values()) if (th.ry > -5) d = Math.min(d, Math.hypot(th.rx - this.me.x, th.rz - this.me.z));
+    for (const it of this.items.byId.values()) if (it.h > 1) d = Math.min(d, Math.hypot(it.rx - this.me.x, it.rz - this.me.z));
+    const lvl = clamp(Math.ceil((15 - d) / 3), 0, 5);
+    if (lvl !== this.emfLvl) { this.emfLvl = lvl; el.querySelectorAll('i').forEach((led, i) => led.classList.toggle('on', i < lvl)); }
+    this.emfT = (this.emfT || 0) - dt;
+    if (held?.kind === 'emf' && lvl > 0 && this.emfT <= 0) { this.emfT = 1.3 - lvl * 0.22; this.sfx.play('emf', null, lvl); }
   }
 
   throwIt(it, power) {
@@ -623,7 +691,9 @@ export class Game {
       const both = me.dead && P.dead;
       const vol = both ? 1 : clamp(1 - (d - 6) / 34, 0, 1);
       const rec = this.cam.aiming ? clamp(1 - d / 14, 0, 1) : 0;
-      vc.route(P.id, { on: on && !this.over || this.over, pos: { x: P.rx, y: P.ry + 1.2, z: P.rz }, volume: this.over ? 1 : vol, occluded: !both && !this.world.los(me.x, me.z, P.rx, P.rz), rec });
+      const radio = !me.dead && !P.dead && P.radio && this.items.carriedBy(this.myId)?.kind === 'walkie';
+      vc.route(P.id, { on: on && !this.over || this.over, pos: { x: P.rx, y: P.ry + 1.2, z: P.rz }, volume: this.over ? 1 : vol, occluded: !both && !this.world.los(me.x, me.z, P.rx, P.rz), rec, radio });
+      if (radio && !P.wasRadio) this.sfx.play('squelch'); P.wasRadio = radio;
     }
   }
 
@@ -650,8 +720,13 @@ export class Game {
     if (me.dead) prompt = '';
     else if (me.carrying) prompt = `Carrying ${this.players.get(me.carrying)?.name || 'a body'} · bring them to the van to revive · ${K('LMB', 'RT')} throw · ${K('Q', 'B')} drop`;
     else if (tgt && tgt.kind === 'body') prompt = `${K('E', 'X')} carry ${tgt.P.name} (the van brings them back)`;
+    else if (tgt && { walkie: 1, emf: 1, flash: 1, battery: 1 }[tgt.kind]) prompt = `${K('E', 'X')} take the ${{ walkie: 'walkie-talkie', emf: 'EMF meter', flash: 'flash camera', battery: 'spare battery' }[tgt.kind]}`;
     else if (tgt) prompt = tgt.kind === 'cam' ? `${K('E', 'X')} pick up the camcorder (tape: ${fmt(tgt.tape)} views)` : `${K('E', 'X')} pick up the ${tgt.kind}`;
     else if (held && held.kind === 'cam') prompt = this.cam.aiming ? `${K('N', 'RB')} night vision · ${K('Q', 'B')} drop` : `${K('RMB', 'LT')} hold to film · ${K('LMB', 'RT')} throw · ${K('Q', 'B')} drop`;
+    else if (held && held.kind === 'flash') prompt = `${K('LMB', 'RT')} flash (stuns what's in front) · ${K('Q', 'B')} drop`;
+    else if (held && held.kind === 'battery') prompt = `${K('LMB', 'RT')} swap into a camcorder next to you · ${K('Q', 'B')} drop`;
+    else if (held && held.kind === 'walkie') prompt = `Talk: your walkie-talkie friends hear you anywhere (monsters hear the static) · ${K('Q', 'B')} drop`;
+    else if (held && held.kind === 'emf') prompt = `EMF meter: it beeps faster near weird stuff · ${K('LMB', 'RT')} throw · ${K('Q', 'B')} drop`;
     else if (held) prompt = `${K('LMB', 'RT')} throw · ${K('Q', 'B')} drop`;
     if (!me.dead && W.inVan(me.x, me.z) && !tgt && !me.carrying && this.time > 20) {
       const all = this.everyoneIn();

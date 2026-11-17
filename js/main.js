@@ -8,7 +8,9 @@ import { TapeRec } from './tape.js';
 import { Review } from './review.js';
 import { recordNight, renderChannel } from './stats.js';
 import { tutorialWanted, resetTutorial } from './tutorial.js';
-import { Crew, COLORS, COLOR_NAMES, HATS } from './models.js';
+import { Crew, COLORS, COLOR_NAMES, HATS, OUTFITS, ACCS } from './models.js';
+import { vanLevel, VAN_LEVELS } from './game.js';
+import { loadStats } from './stats.js';
 import { cleanCode, cleanName, QUICK_CODES, probe } from './net.js';
 import { fmt, clamp } from './util.js';
 import { createGovernor } from '../perf.js';
@@ -19,7 +21,7 @@ const TEST = params.has('test');
 const NIGHTS = 3;
 
 // ---------- settings ----------
-const DEFAULTS = { name: '', color: Math.floor(Math.random() * 8), hat: 'cap', sens: 1, fov: 75, vol: 0.8, voiceVol: 1, voiceMode: 'clear', mic: 'open', pads: true, quality: 'auto', bright: 1, padSens: 1 };
+const DEFAULTS = { name: '', color: Math.floor(Math.random() * 8), hat: 'cap', outfit: 'plain', acc: 'none', role: 'camop', sens: 1, fov: 75, vol: 0.8, voiceVol: 1, voiceMode: 'clear', mic: 'open', pads: true, quality: 'auto', bright: 1, padSens: 1 };
 const settings = (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('deadair.settings') || '{}') }; } catch { return { ...DEFAULTS }; } })();
 if (!settings.name) settings.name = 'Crew' + Math.floor(100 + Math.random() * 900);
 const save = () => { try { localStorage.setItem('deadair.settings', JSON.stringify(settings)); } catch { /* private mode */ } };
@@ -61,10 +63,10 @@ const title = { scene: new THREE.Scene(), cam: new THREE.PerspectiveCamera(50, i
 function drawTitle(dt) {
   const t = performance.now() / 1000;
   // the one on the left is you: rebuilt when your colour or hat changes
-  const look = settings.color + '/' + settings.hat;
+  const look = [settings.color, settings.hat, settings.outfit, settings.acc].join('/');
   if (title.look !== look) {
     title.look = look;
-    const old = title.crew[0], n = new Crew(settings.color, settings.hat);
+    const old = title.crew[0], n = new Crew(settings.color, settings.hat, settings.outfit, settings.acc);
     n.root.position.copy(old.root.position); n.root.rotation.y = old.root.rotation.y;
     title.scene.remove(old.root); title.scene.add(n.root); title.crew[0] = n;
   }
@@ -243,7 +245,7 @@ function startNight() {
   if (run.night === 1 && run.seasonViews === 0) run.quota = quotaFor(run.season); // the crew size can change between seasons
   session.net.locked = true;
   session.resetHighlights();
-  lastStart = { t: 'start', seed: (run.seed + run.season * 1013 + run.night * 7919) >>> 0, night: run.night, season: run.season, quota: run.quota, seasonViews: run.seasonViews, nightOf: NIGHTS, crew: session.crew() };
+  lastStart = { t: 'start', seed: (run.seed + run.season * 1013 + run.night * 7919) >>> 0, night: run.night, season: run.season, quota: run.quota, seasonViews: run.seasonViews, nightOf: NIGHTS, crew: session.crew(), vanLvl: vanLevel(loadStats().views) };
   session.net.broadcast(lastStart);
 }
 
@@ -255,7 +257,7 @@ function beginNight(m) {
   paused = false;
   run = run || {};
   Object.assign(run, { season: m.season, night: m.night, quota: m.quota, seasonViews: m.seasonViews });
-  game = new Game({ renderer, sfx, input, net: session.net, vc: session.vc, tape, myId: session.myId, crew: m.crew, seed: m.seed, night: m.night, season: m.season, quota: m.quota, seasonViews: m.seasonViews, nightOf: m.nightOf, settings, micLevel: () => micLevel(), onEnd: onNightEnd, tutorial: !session.online && m.night === 1 && m.season === 1 && (tutorialWanted() || params.has('tutorial')) });
+  game = new Game({ renderer, sfx, input, net: session.net, vc: session.vc, tape, myId: session.myId, crew: m.crew, seed: m.seed, night: m.night, season: m.season, quota: m.quota, seasonViews: m.seasonViews, nightOf: m.nightOf, settings, micLevel: () => micLevel(), onEnd: onNightEnd, vanLvl: m.vanLvl || 0, tutorial: !session.online && m.night === 1 && m.season === 1 && (tutorialWanted() || params.has('tutorial')) });
   if (session.vc) { session.vc.mode = settings.voiceMode; session.vc.volume = settings.voiceVol; }
   gov.reset();
   micLabel();
@@ -349,16 +351,24 @@ function renderLobby() {
   $('lobbyLink').value = link;
   const r = session.isHost ? run : session.lobbyState?.run;
   $('lobbyRun').textContent = r ? `Season ${r.season} · next: night ${r.night} of ${NIGHTS} · ${fmt(r.seasonViews)} / ${fmt(r.quota)} views` : '';
-  $('lobbyList').innerHTML = session.crew().map((c) => `<li><i style="background:#${new THREE.Color(COLORS[c.color]).getHexString()}"></i>${esc(c.name)}${c.id === session.myId ? ' <em>(you)</em>' : ''}${c.id === 'h' ? ' <span>host</span>' : ''}</li>`).join('');
+  $('lobbyList').innerHTML = session.crew().map((c) => `<li><i style="background:#${new THREE.Color(COLORS[c.color]).getHexString()}"></i>${esc(c.name)}${c.id === session.myId ? ' <em>(you)</em>' : ''}${c.id === 'h' ? ' <span>host</span>' : ''}<small class="role">${ROLE_INFO[c.role]?.[0] || ''}</small></li>`).join('');
   $('btnStart').hidden = !session.isHost;
   $('btnStart').textContent = session.roster.length > 1 ? `Start night (${session.roster.length} crew)` : 'Start night (just you? invite someone!)';
 }
 function lookPicker(root) {
   root.innerHTML = COLORS.map((c, i) => `<button class="sw${settings.color === i ? ' on' : ''}" data-c="${i}" title="${COLOR_NAMES[i]}" style="background:#${new THREE.Color(c).getHexString()}"></button>`).join('')
-    + `<select data-hat>${HATS.map((h) => `<option ${settings.hat === h ? 'selected' : ''}>${h}</option>`).join('')}</select>`;
-  root.querySelectorAll('[data-c]').forEach((b) => b.onclick = () => { settings.color = +b.dataset.c; save(); sfx.play('click'); lookPicker(root); session?.setLook(cleanLook(settings)); });
-  root.querySelector('[data-hat]').onchange = (e) => { settings.hat = e.target.value; save(); session?.setLook(cleanLook(settings)); };
+    + `<select data-hat title="Hat">${HATS.map((h) => `<option ${settings.hat === h ? 'selected' : ''}>${h}</option>`).join('')}</select>`
+    + `<select data-outfit title="Outfit">${OUTFITS.map((h) => `<option ${settings.outfit === h ? 'selected' : ''}>${h}</option>`).join('')}</select>`
+    + `<select data-acc title="Extra">${ACCS.map((h) => `<option ${settings.acc === h ? 'selected' : ''} value="${h}">${h === 'none' ? 'no extra' : h}</option>`).join('')}</select>`;
+  root.querySelectorAll('[data-c]').forEach((b) => b.onclick = () => { settings.color = +b.dataset.c; save(); sfx.play('click'); session?.setLook(cleanLook(settings)); syncPickers(); });
+  for (const k of ['hat', 'outfit', 'acc']) root.querySelector(`[data-${k}]`).onchange = (e) => { settings[k] = e.target.value; save(); session?.setLook(cleanLook(settings)); syncPickers(); };
 }
+const ROLE_INFO = { camop: ['Camera op', 'the camcorder battery lasts longer'], host: ['Host', 'talking on camera earns 3x'], runner: ['Runner', 'more stamina, runs faster'], tech: ['Tech', 'built-in EMF meter, sees the Critic up close'] };
+function rolePicker(root) {
+  root.innerHTML = `<select data-role>${Object.entries(ROLE_INFO).map(([k, [n, d]]) => `<option value="${k}" ${settings.role === k ? 'selected' : ''}>${n}: ${d}</option>`).join('')}</select>`;
+  root.querySelector('select').onchange = (e) => { settings.role = e.target.value; save(); session?.setLook(cleanLook(settings)); syncPickers(); };
+}
+function syncPickers() { lookPicker($('lookPick')); lookPicker($('lookPick2')); rolePicker($('rolePick')); rolePicker($('rolePick2')); }
 
 // ---------- buttons ----------
 const click = (id, f) => $(id).addEventListener('click', (e) => { sfx.init(); sfx.play('click'); f(e); });
@@ -395,8 +405,7 @@ click('setBack', () => show(settingsBack));
 click('micTestBtn', async () => { await boot(); await getMic(); $('micTestNote').textContent = mic ? 'Say something: the bar should move.' : 'No microphone (or it was blocked). You can still play.'; });
 $('nameIn').value = settings.name;
 $('nameIn').addEventListener('change', () => { settings.name = cleanName($('nameIn').value); $('nameIn').value = settings.name; save(); });
-lookPicker($('lookPick'));
-lookPicker($('lookPick2'));
+syncPickers();
 if (records.best) $('bestLine').textContent = `Longest run: ${records.best} night${records.best === 1 ? '' : 's'}`;
 
 function fillSettings() {

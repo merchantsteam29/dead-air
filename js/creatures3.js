@@ -150,7 +150,7 @@ export function drawMore3(T, th, p, t, dt) {
     m.position.y = 1.55;
   }
   if (th.kind === 'critic') {
-    m.visible = th.y > -5 && g.cam.aiming; // you only ever see it through the camcorder
+    m.visible = th.y > -5 && (g.cam.aiming || (g.role === 'tech' && Math.hypot(th.rx - g.me.x, th.rz - g.me.z) < 15)); // only through the camcorder (or the Tech's eyes, up close)
     p.body.rotation.z = Math.sin(t * 1.3) * 0.04;
     p.pen.rotation.z = 0.8 + Math.sin(t * 9) * 0.3; // scribbling notes
     p.arm.rotation.x = -0.4 + Math.sin(t * 9) * 0.05;
