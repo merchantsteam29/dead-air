@@ -189,6 +189,8 @@ export class Camcorder {
     if (g.me && g.me.v > 0.1) add(3 * 0.2, 'narrate');
     // out in the blood rain: everything is worth double
     if (g.rain?.exposed(c.x, c.z)) { pts *= 2; add(2 * 0.2, 'rain'); }
+    pts *= g.events?.mult || 1; // fog x1.3, blood moon x2
+    if (g.events?.kind === 'bloodmoon' || g.events?.kind === 'fog') tags.add(g.events.kind);
     if (this.nv) tags.add('nv');
     if (!Number.isFinite(pts)) pts = 0;
     g.dons?.progress(0.2, tags, seen);

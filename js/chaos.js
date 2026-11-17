@@ -13,7 +13,8 @@ export class BloodRain {
     this.g = g;
     this.state = 'off'; this.k = 0; // k: 0..1 how heavy it is (eases in and out)
     const r = rng((g.seed ^ 0xb100d) >>> 0);
-    this.plan = r() < 0.55 ? { warn: 70 + r() * 160, dur: 40 + r() * 15 } : null;
+    const pw = r(), pd = r(); // (it's the night's event: events.js picks it)
+    this.plan = g.events?.kind === 'bloodrain' ? { warn: 50 + pw * 150, dur: 40 + pd * 15 } : null;
     // red streaks around the camera
     const n = 1400, pos = new Float32Array(n * 6);
     this.drops = []; for (let i = 0; i < n; i++) this.drops.push({ x: (r() - 0.5) * 30, y: r() * 14, z: (r() - 0.5) * 30, v: 16 + r() * 8 });
@@ -83,7 +84,7 @@ const SAY = {
   chair: 'film the floating chair up close!!', tv: 'get the TV face on camera', flamingo: 'film the flamingos. closer.', wardrobe: 'film the wardrobe OPEN',
   balloon: 'film the balloon!!', dancer: 'film her dancing pls', applause: 'get mr applause on camera (stay safe lol)', hand: 'film the hand, it creeps me out',
   scream: 'make someone SCREAM on camera', fall: 'film someone falling over 😭', bonk: 'hit a monster with something', dance: 'film someone dancing',
-  narrate: 'talk to chat for a bit', intern: 'film the extra crew member', mascot: 'film the hot dog guy', phone: 'film the phone ringing', bathtub: 'film the bathtub', portrait: 'film the creepy painting', dog: 'film the ghost dog!!', nv: 'use night vision for a bit', rain: 'film the blood rain', revive: 'film a revive at the van',
+  narrate: 'talk to chat for a bit', cart: 'film the cart that drives itself', xray: 'film the x-ray waving', chalkboard: 'film the chalkboard writing', intern: 'film the extra crew member', mascot: 'film the hot dog guy', phone: 'film the phone ringing', bathtub: 'film the bathtub', portrait: 'film the creepy painting', dog: 'film the ghost dog!!', nv: 'use night vision for a bit', rain: 'film the blood rain', revive: 'film a revive at the van',
 };
 export class Donations {
   constructor(g) {

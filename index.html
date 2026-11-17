@@ -41,7 +41,7 @@
     <button id="btnHost" class="big alt">Host a crew <small>(up to 4, voice chat)</small></button>
     <div class="joinRow"><input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off"><button id="btnJoin">Join a crew</button></div>
     <p id="joinHint" class="hint" hidden>You were invited! Press Join a crew.</p>
-    <div class="small"><button id="btnHow">How to play</button><button id="btnSettings">Settings</button><button id="installApp" style="display:none">Install app</button><button id="pcDownload">Download for PC</button></div>
+    <div class="small"><button id="btnChannel">Your channel</button><button id="btnHow">How to play</button><button id="btnSettings">Settings</button><button id="installApp" style="display:none">Install app</button><button id="pcDownload">Download for PC</button></div>
     <p id="bestLine" class="hint"></p>
   </div>
   <p class="foot">Use headphones. The game uses your microphone: things out there can hear you.</p>
@@ -74,6 +74,7 @@
       <li><b>The hand</b> steals whatever you're holding. Throw something at it.</li>
       <li><b>Dead?</b> Your friends can carry (or throw) your body back to the van. A few seconds there and you're back.</li>
       <li><b>Donations</b> pop up: viewers pay you to film something. First camcorder to do it gets the bonus.</li>
+      <li><b>Places:</b> lots, malls, hospitals and schools, each with something weird of its own. <b>Night events:</b> fog, storms, power cuts, blood moons (double views) and blood rain.</li>
       <li><b>Blood rain</b> drains your stamina and battery outside. Get under a roof, or film it for double views.</li>
       <li>Your friends' screams, falls and arguments on camera count too, and the best 8 seconds of every tape go in the upload, with sound.</li>
     </ul>
@@ -102,6 +103,10 @@
     <button id="pSettings">Settings</button>
     <button id="pLeave">Leave the crew</button>
   </div>
+</section>
+
+<section id="channel" class="screen" hidden>
+  <div class="card wide"><div id="chBody"></div><button id="chBack">Back</button></div>
 </section>
 
 <section id="uploading" class="screen" hidden>

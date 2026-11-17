@@ -22,7 +22,8 @@ export class Review {
     const el = this.el;
     el.hidden = false;
     const $ = (id) => document.getElementById(id);
-    $('rvTitle').textContent = `S${info.season} E${info.night}: ${info.place} ${TITLES[Math.floor(r() * TITLES.length)]}`;
+    this.title = `S${info.season} E${info.night}: ${info.place} ${TITLES[Math.floor(r() * TITLES.length)]}`;
+    $('rvTitle').textContent = this.title;
     $('rvComments').innerHTML = '';
     $('rvSummary').hidden = true;
     $('rvPlayer').hidden = false;

@@ -45,6 +45,17 @@ kbd { font-family: VT323, monospace; font-size: 17px; background: rgba(255, 255,
 .tag { font-family: VT323, monospace; font-size: 24px; color: var(--amber); margin: 6px 0 16px; text-shadow: 0 2px 6px #000; }
 #title .card { margin-top: auto; margin-bottom: auto; }
 
+/* channel */
+#channel .card { max-height: 90vh; overflow-y: auto; }
+.chHead { display: flex; gap: 14px; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.chHead i { width: 64px; height: 64px; border-radius: 50%; flex: none; box-shadow: 0 0 0 3px #fff2 inset; }
+.chHead h2 { margin: 0; } .chHead p { margin: 4px 0 0; color: var(--dim); }
+.chStats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+.chStats div { background: rgba(255, 255, 255, .05); border-radius: 8px; padding: 8px 10px; }
+.chStats b { display: block; font-size: 24px; color: #ffd84a; } .chStats span { font-size: 13px; color: var(--dim); }
+.chList > div { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid #ffffff10; }
+.chList .thumb { width: 64px; height: 36px; flex: none; border-radius: 4px; background: #1a1e2a; display: grid; place-items: center; color: var(--red); }
+.chList b { display: block; font-size: 14px; } .chList small { color: var(--dim); }
 /* lobby */
 .code { font-family: VT323, monospace; font-size: 64px; letter-spacing: 12px; text-align: center; color: var(--amber); }
 #lobbyList { list-style: none; padding: 0; margin: 10px 0; }

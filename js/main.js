@@ -6,6 +6,7 @@ import { Game, NIGHT_SECS } from './game.js';
 import { Session, cleanLook } from './session.js';
 import { TapeRec } from './tape.js';
 import { Review } from './review.js';
+import { recordNight, renderChannel } from './stats.js';
 import { Crew, COLORS, COLOR_NAMES, HATS } from './models.js';
 import { cleanCode, cleanName } from './net.js';
 import { fmt, clamp } from './util.js';
@@ -75,7 +76,7 @@ function drawTitle(dt) {
 }
 
 // ---------- screens ----------
-const SCREENS = ['title', 'lobby', 'howto', 'settings', 'pause', 'uploading', 'msg'];
+const SCREENS = ['title', 'lobby', 'howto', 'settings', 'pause', 'uploading', 'msg', 'channel'];
 function show(id) { for (const s of SCREENS) $(s).hidden = s !== id; document.body.dataset.screen = id || 'game'; }
 function msg(text, back = 'title') { $('msgText').textContent = text; show('msg'); $('msgOk').onclick = () => { sfx.play('click'); show(back); }; }
 
@@ -239,7 +240,7 @@ function hostAfterNight(end) {
     if (!(ready || performance.now() - t0 > 25000)) return;
     clearInterval(wait);
     const sorted = keys.filter((k) => session.hl[k].done).sort((a, b) => session.hl[b].meta.score - session.hl[a].meta.score).slice(0, 4);
-    session.net.broadcast({ t: 'review', keys: sorted, info: { season: run.season, night: run.night, nightOf: NIGHTS, quota: run.quota, seasonViews: run.seasonViews, end, verdict, names, place: game?.world.name || '', seed: run.seed + run.night } });
+    session.net.broadcast({ t: 'review', keys: sorted, info: { season: run.season, night: run.night, nightOf: NIGHTS, quota: run.quota, seasonViews: run.seasonViews, end, verdict, names, place: game?.world.name || '', type: game?.world.type, seed: run.seed + run.night } });
     if (verdict === 'cancelled') { records.best = Math.max(records.best || 0, (run.season - 1) * NIGHTS + run.night); saveRecords(); }
     session.net.locked = false;
   }, 300);
@@ -258,6 +259,7 @@ async function showReview(m) {
   $('rvNext').dataset.v = info.verdict || '';
   const clips = m.keys.map((k) => session.highlight(k)).filter(Boolean);
   review.play(clips, info);
+  try { recordNight(info, session.myId, review.title, info.type); } catch (e) { console.warn('stats', e); }
 }
 
 $('rvNext').onclick = () => {
@@ -304,6 +306,8 @@ click('btnHost', () => hostCrew());
 click('btnJoin', () => joinCrew($('joinCode').value));
 $('joinCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinCrew($('joinCode').value); });
 click('btnHow', () => show('howto'));
+click('btnChannel', () => { renderChannel($('chBody'), settings.name, '#' + new THREE.Color(COLORS[settings.color]).getHexString()); show('channel'); });
+click('chBack', () => show('title'));
 click('btnSettings', () => { settingsBack = game ? 'pause' : 'title'; fillSettings(); show('settings'); });
 click('howBack', () => show('title'));
 click('btnStart', () => startNight());
@@ -389,7 +393,7 @@ function loop(now) {
     }
     game.render();
     gov.tick(raw);
-  } else if (!$('title').hidden || !$('lobby').hidden || !$('settings').hidden || !$('howto').hidden) drawTitle(dt);
+  } else if (!$('title').hidden || !$('lobby').hidden || !$('settings').hidden || !$('howto').hidden || !$('channel').hidden) drawTitle(dt);
   input.endFrame();
 }
 requestAnimationFrame(loop);

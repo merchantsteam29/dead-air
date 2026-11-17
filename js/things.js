@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { clamp, angDiff, yawTo, rng, r2 } from './util.js';
 import { MORE, buildMore, hostMore, drawMore } from './creatures2.js';
+import { MORE3, buildMore3, hostMore3, drawMore3 } from './creatures3.js';
 
 const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
 
@@ -18,6 +19,7 @@ export const KINDS = {
   applause: { worth: 120, name: 'Mr. Applause', act: (th) => [1, 1.5, 2.2, 3.2, 1.2, 4, 0][th.s] ?? 1, danger: true },
   hand:     { worth: 60, name: 'the hand', act: (th) => [1, 1.4, 2.4, 0.8, 0.6][th.s] ?? 1, danger: true },
   ...MORE, // (append new kinds at the end: the snapshot sends the index)
+  ...MORE3,
 };
 export const KIND_LIST = Object.keys(KINDS);
 
@@ -62,6 +64,7 @@ const grinTex = () => faceTex((c, w, h) => {
 // ---------- models ----------
 function build(kind, th) {
   if (MORE[kind]) return buildMore(kind, th);
+  if (MORE3[kind]) return buildMore3(kind, th);
   const g = new THREE.Group(), p = {};
   if (kind === 'chair') {
     const m = lam(0x3a2418);
@@ -195,6 +198,7 @@ export class Things {
   // Walk toward (tx, tz) along a path, at speed. Returns the distance left.
   walk(th, tx, tz, speed, dt) {
     const W = this.g.world;
+    speed *= this.g.events?.speedK || 1; // (a blood moon)
     th.pathT -= dt;
     if (!th.path || th.pathT <= 0 || Math.hypot((th.goal?.x ?? 0) - tx, (th.goal?.z ?? 0) - tz) > 1.5) {
       th.path = W.clearWalk(th.x, th.z, tx, tz) ? [{ x: tx, z: tz }] : W.path(th.x, th.z, tx, tz) || [];
@@ -275,7 +279,7 @@ export class Things {
         }
         case 'applause': this.applause(th, dt, living, near); break;
         case 'hand': this.hand(th, dt, living, near); break;
-        default: if (MORE[th.kind]) hostMore(this, th, dt, living, near); break;
+        default: if (MORE[th.kind]) hostMore(this, th, dt, living, near); else if (MORE3[th.kind]) hostMore3(this, th, dt, living, near); break;
       }
     }
   }
@@ -365,6 +369,8 @@ export class Things {
     if (th.kind === 'intern' && th.s <= 2) { th.s = 3; th.t = 0; g.sound('bonk', th.x, 1.2, th.z); g.sound('shriek', th.x, 1.2, th.z); g.event({ k: 'struck', id: th.id }); return true; }
     if (th.kind === 'mascot' && (th.s === 1 || th.s === 2)) { th.s = 4; th.t = 0; g.sound('bonk', th.x, 1.6, th.z); g.sound('squeak', th.x, 1.6, th.z); g.event({ k: 'struck', id: th.id }); return true; }
     if (th.kind === 'dog') return false; // it just wants to play
+    if (th.kind === 'cart') { th.s = 2; th.t = 0; g.sound('hit', th.x, 0.6, th.z); return true; }
+    if (th.kind === 'xray' || th.kind === 'chalkboard') { g.sound('bonk', th.x, 1.5, th.z); return false; }
     if (th.kind === 'tv' || th.kind === 'chair' || th.kind === 'flamingo' || th.kind === 'phone' || th.kind === 'bathtub' || th.kind === 'portrait') { g.sound('bonk', th.x, 1, th.z); return false; }
     return false;
   }
@@ -434,7 +440,7 @@ export class Things {
           break;
         }
         case 'applause': this.drawApplause(th, p, t, dt); break;
-        default: if (MORE[th.kind]) drawMore(this, th, p, t, dt); break;
+        default: if (MORE[th.kind]) drawMore(this, th, p, t, dt); else if (MORE3[th.kind]) drawMore3(this, th, p, t, dt); break;
         case 'hand': {
           const crawl = th.s === 1 || th.s === 2 ? 1 : th.s === 0 ? 0.4 : 0;
           p.fingers.forEach((f, i) => { f.rotation.x = Math.sin(t * 22 * crawl + i * 1.3) * 0.5 * crawl - (th.s === 3 ? 1.2 : 0) + 0.35; });

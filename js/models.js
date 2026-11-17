@@ -179,8 +179,17 @@ const PROPS = {
   bottle: { r: 0.12, build() { const g = new THREE.Group(), m = lam(0x2a7a3a, { transparent: true, opacity: 0.85 }); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.22, 8), m); g.add(b); const n = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.05, 0.1, 8), m); n.position.y = 0.15; g.add(n); return g; } },
   radio: { r: 0.22, build() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.24, 0.14), lam(0x8a2a2a))); const s = new THREE.Mesh(new THREE.CircleGeometry(0.08, 10), lam(0x222222)); s.position.set(-0.08, 0, -0.071); s.rotation.y = Math.PI; g.add(s); const a = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.4), lam(0xaaaaaa)); a.position.set(0.15, 0.3, 0); a.rotation.z = -0.4; g.add(a); return g; } },
   pumpkin: { r: 0.24, build() { const g = new THREE.Group(); const p = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), lam(0xe0701a)); p.scale.y = 0.8; g.add(p); const s = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.1), lam(0x3a5a1a)); s.position.y = 0.22; g.add(s); return g; } },
+  // location junk (mall / hospital / school)
+  bag: { r: 0.22, build() { const g = new THREE.Group(); const b = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.38, 0.16), lam(0xe0d0b0)); g.add(b); const h = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.012, 4, 10, Math.PI), lam(0x8a6a3a)); h.position.y = 0.19; g.add(h); return g; } },
+  head: { r: 0.17, build() { const g = new THREE.Group(); const h = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), lam(0xe8dccc)); h.scale.y = 1.2; g.add(h); const n = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.1, 8), lam(0xe8dccc)); n.position.y = -0.2; g.add(n); return g; } },
+  clipboard: { r: 0.18, build() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.34), lam(0x8a6a3a))); const p = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.022, 0.28), lam(0xf4f4f0)); p.position.z = 0.02; g.add(p); const c = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.03), lam(0xaaaaaa)); c.position.set(0, 0.01, -0.16); g.add(c); return g; } },
+  bedpan: { r: 0.2, build() { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.15, 0.07, 12, 1, true), lam(0xc8ccd0, { side: THREE.DoubleSide })); return m; } },
+  ball: { r: 0.18, build() { return new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), lam(0xd02a2a)); } },
+  book: { r: 0.16, build() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.3), lam(0x2a5a9a))); const p = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.29), lam(0xf0ead8)); p.position.x = 0.012; g.add(p); return g; } },
+  globe: { r: 0.2, build() { const g = new THREE.Group(); const s = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8), lam(0x3a8ac8)); s.position.y = 0.06; g.add(s); const b = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.05, 8), lam(0x6a4a2a)); b.position.y = -0.14; g.add(b); return g; } },
 };
 export const PROP_KINDS = Object.keys(PROPS);
+export const BASIC_PROPS = ['chair', 'bucket', 'box', 'cone', 'duck', 'tire', 'gnome', 'bottle', 'radio', 'pumpkin'];
 export const propRadius = (k) => (k === 'cam' ? 0.18 : PROPS[k]?.r || 0.25);
 export function makeProp(kind) {
   if (kind === 'cam') return makeCamcorder();

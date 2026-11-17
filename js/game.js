@@ -4,18 +4,20 @@
 // Host -> everyone: snap, ev (sounds, knock-downs, deaths, thefts, revives, rain, donations...), end.
 import * as THREE from 'three';
 import { World, buildScene } from './world.js';
-import { Crew, makeProp, PROP_KINDS } from './models.js';
+import { Crew, makeProp, BASIC_PROPS } from './models.js';
 import { Things } from './things.js';
 import { Items } from './items.js';
 import { Camcorder } from './camcorder.js';
 import { BloodRain, Donations, Bodies } from './chaos.js';
+import { NightEvents } from './events.js';
+import { noteRevive } from './stats.js';
 import { EmoteWheel, EMOTES, EMOTE_SECS } from './emotes.js';
 import { clamp, angDiff, rng, pick, shuffle, r2, fmt } from './util.js';
 
 const EYE = 1.25, WALK = 3.0, RUN = 5.3, JUMP = 4.8, GRAV = 14;
 export const NIGHT_SECS = 360;
 const PASSIVE = ['chair', 'tv', 'wardrobe', 'dancer', 'balloon', 'flamingo', 'phone', 'bathtub', 'portrait', 'dog'];
-const BLOCKERS = { wardrobe: 0.65, tv: 0.5, dancer: 0.35, applause: 0.3, bathtub: 0.75, phone: 0.35, mascot: 0.45 };
+const BLOCKERS = { wardrobe: 0.65, tv: 0.5, dancer: 0.35, applause: 0.3, bathtub: 0.75, phone: 0.35, mascot: 0.45, cart: 0.4 };
 
 export class Game {
   constructor(o) {
@@ -73,6 +75,7 @@ export class Game {
     this.things = new Things(this);
     this.items = new Items(this);
     this.cam = new Camcorder(this);
+    this.events = new NightEvents(this);
     this.rain = new BloodRain(this);
     this.dons = new Donations(this);
     this.bodies = new Bodies(this);
@@ -108,7 +111,8 @@ export class Game {
     const cams = nCrew <= 2 ? 1 : 2;
     for (let i = 0; i < cams; i++) I.add('cam', W.van.x + 1.7 + i * 0.7, W.van.z + 3.3);
     // junk
-    for (let i = 0; i < 30; i++) { const s = W.spot(r, 'any', 6); I.add(pick(r, PROP_KINDS), s.x, s.z); }
+    const junk = W.T.props ? [...BASIC_PROPS, ...W.T.props, ...W.T.props, ...W.T.props] : BASIC_PROPS;
+    for (let i = 0; i < 30; i++) { const s = W.spot(r, 'any', 6); I.add(pick(r, junk), s.x, s.z); }
     // the weird stuff: different rooms
     const rooms = shuffle(r, W.rooms.slice());
     let ri = 0;
@@ -123,6 +127,12 @@ export class Game {
       if (k === 'portrait') { const at = this.againstWall(r, nextRoom(), 0.08); if (at) T.spawn('portrait', at.x, at.z, { yaw: at.yaw }); }
       if (k === 'dog') { const s = W.spot(r, 'out', 12); T.spawn('dog', s.x, s.z); }
       if (k === 'flamingo') { const s = W.spot(r, 'out', 16); for (let i = 0; i < 3; i++) { const p = { x: s.x + (i - 1) * 1.1, z: s.z + (i % 2) * 0.8 }; if (W.walkCell(Math.floor(p.x), Math.floor(p.z))) T.spawn('flamingo', p.x, p.z, { a: -99 }); } }
+    }
+    // what only this kind of place has
+    const u = W.T.unique;
+    for (let i = 0; u && i < 2; i++) {
+      if (u === 'cart') { const s = W.spot(r, 'in', 10); T.spawn('cart', s.x, s.z); }
+      else { const at = this.againstWall(r, nextRoom(), 0.06); if (at) T.spawn(u, at.x, at.z, { yaw: at.yaw, a: u === 'xray' ? (r() < 0.3 ? 1 : 0) : 0 }); }
     }
     if (this.night >= 4) { const rm = nextRoom(); T.spawn('chair', rm.x0 + rm.w / 2, rm.z0 + rm.h / 2); }
     // the dangerous ones arrive later
@@ -287,7 +297,7 @@ export class Game {
     if (e.k === 'revive') {
       const P = this.players.get(e.id);
       if (P) { P.dead = false; P.down = false; P.carrier = null; P.x = P.rx = e.x; P.z = P.rz = e.z; P.y = 0; }
-      if (e.id === this.myId) { Object.assign(this.p, { downT: 0, deathT: 99, emote: null, vy: 0 }); this.killer = null; this.hud.spec.hidden = true; this.hud.down.classList.remove('on'); this.toast("You're back! The crew dragged you to the van.", 4); this.sfx.play('big'); }
+      if (e.id === this.myId) { Object.assign(this.p, { downT: 0, deathT: 99, emote: null, vy: 0 }); this.killer = null; this.hud.spec.hidden = true; this.hud.down.classList.remove('on'); this.toast("You're back! The crew dragged you to the van.", 4); this.sfx.play('big'); noteRevive(); }
       else if (P) this.toast(`${P.name} is back!`, 3);
     }
     if (e.k === 'rain') this.rain.onEvent(e);
@@ -311,6 +321,7 @@ export class Game {
     this.things.render(dt);
     this.items.render(dt);
     this.rain.update(dt);
+    this.events.update(dt);
     this.viewModel(dt);
     this.voices();
     this.updateHud(dt);
@@ -454,7 +465,7 @@ export class Game {
     this.camera.rotation.set(me.pitch, me.yaw, p.roll);
     const fov = (this.settings.fov || 75) * (this.cam.aiming ? 0.8 : 1);
     if (Math.abs(this.camera.fov - fov) > 0.1) { this.camera.fov += (fov - this.camera.fov) * Math.min(1, dt * 10); this.camera.updateProjectionMatrix(); }
-    this.flash.intensity = p.flash ? 14 : 0;
+    this.flash.intensity = p.flash ? 14 * this.events.lampK() : 0;
     this.sfx.setListener(this.camera.position.x, this.camera.position.y, this.camera.position.z, me.yaw);
     this.sfx.ambient(dt, W.indoor(me.x, me.z));
   }
@@ -560,7 +571,7 @@ export class Game {
       // headlamp
       const L = this.lamps[P.slot];
       if (L) {
-        L.intensity = P.flash && !P.dead ? 12 : 0;
+        L.intensity = P.flash && !P.dead ? 12 * this.events.lampK() : 0;
         m.lamp.getWorldPosition(L.position);
         const cp = Math.cos(P.pitch);
         L.target.position.set(L.position.x - Math.sin(P.ryaw) * cp * 5, L.position.y + Math.sin(P.pitch) * 5 - 0.3, L.position.z - Math.cos(P.ryaw) * cp * 5);
@@ -623,7 +634,7 @@ export class Game {
     const left = Math.max(0, this.left);
     h.clock.textContent = this.clock();
     h.clock.classList.toggle('late', left < 60);
-    h.night.textContent = `Night ${this.night} of ${this.nightOf} · ${W.name}`;
+    h.night.textContent = `Night ${this.night} of ${this.nightOf} · ${W.name}${this.events.info ? ' · ' + this.events.info.tag : ''}`;
     h.views.textContent = `Tonight's tapes: ${fmt(this.nightViews)} views · Season ${fmt(this.seasonViews)} / ${fmt(this.quota)}`;
     if (!me.dead) h.spec.hidden = true;
     // prompt
@@ -685,7 +696,7 @@ export class Game {
     this.over = true;
     this.cam.dispose();
     this.things.dispose(); this.items.dispose();
-    this.rain.dispose(); this.dons.dispose(); this.wheel.dispose();
+    this.rain.dispose(); this.dons.dispose(); this.wheel.dispose(); this.events.dispose();
     this.sfx.stopAmbient();
     this.hud.root.hidden = true;
     this.hud.down.classList.remove('on');

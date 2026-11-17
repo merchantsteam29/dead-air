@@ -1,15 +1,21 @@
-// The location: a seeded grid (1 m cells). Open ground fenced in by a tree line, 3-4 abandoned buildings split into
-// rooms, scattered trees, and the crew's van at the south edge. Every browser builds the same map from the seed.
+// The location: a seeded grid (1 m cells) fenced in by a tree line, with the crew's van at the south edge. A lot (3-4
+// small buildings) or a mall / hospital / school (one big building of many rooms, furnished). Every browser builds the same map from the seed.
 import * as THREE from 'three';
 import { rng, pick, shuffle, clamp } from './util.js';
 
-export const GROUND = 0, FLOOR = 1, WALL = 2, EDGE = 3, SOLID = 4, DOOR = 5;
+export const GROUND = 0, FLOOR = 1, WALL = 2, EDGE = 3, SOLID = 4, DOOR = 5, FURN = 6; // FURN: furniture (blocks walking, not sight)
 export const WALL_H = 3;
 const N = 72;
 
 const PLACE_A = ['Pinegrove', 'Hollis', 'Saint Agnes', 'Blackwater', 'Merriweather', 'Cold Spring', 'Ashby', 'Lantern Hill', 'Greyfield', 'Willow Bend', 'Crane Lake', 'Dunmore'];
-const PLACE_B = ['Motel', 'Summer Camp', 'Farm', 'Rest Stop', 'Trailer Park', 'Holiday Village', 'Scout Lodge', 'Truck Stop', 'Bible Camp', 'Mini Golf'];
-const WALL_COLORS = [0x8a7a68, 0x6f7f74, 0x8c6f6a, 0x7a7486, 0x857f62, 0x6b7a86];
+// Location types. lot: open ground with 3-4 small buildings. mall / hospital / school: one big building of many rooms
+// (BSP split: `min` smallest room side, `depth` how many times it splits, `door` doorway width) with a car park.
+export const TYPES = {
+  lot: { names: ['Motel', 'Summer Camp', 'Farm', 'Rest Stop', 'Trailer Park', 'Holiday Village', 'Scout Lodge', 'Truck Stop', 'Bible Camp', 'Mini Golf'], walls: [0x8a7a68, 0x6f7f74, 0x8c6f6a, 0x7a7486, 0x857f62, 0x6b7a86], floor: 'wood', furn: 'table' },
+  mall: { names: ['Mall', 'Galleria', 'Outlet Center', 'Shopping Plaza'], walls: [0xc8b8d8, 0xb8d0d8, 0xd8c8b0], floor: 'tile', furn: 'shelf', min: 6, depth: 4, door: 3, unique: 'cart', props: ['bag', 'head', 'bag'] },
+  hospital: { names: ['General Hospital', 'Sanatorium', 'Memorial Hospital', 'Care Home'], walls: [0xa8c8b4, 0xbcd0c4, 0xc0c8c8], floor: 'lino', furn: 'bed', min: 4, depth: 6, door: 2, unique: 'xray', props: ['clipboard', 'bedpan', 'clipboard'] },
+  school: { names: ['High School', 'Elementary', 'Academy', 'Middle School'], walls: [0xd8c888, 0xd0c0a0, 0xb8c8d8], floor: 'wood', furn: 'desk', min: 5, depth: 5, door: 2, unique: 'chalkboard', props: ['ball', 'book', 'globe'] },
+};
 
 export class World {
   constructor(seed) {
@@ -25,7 +31,13 @@ export class World {
     this.bid = new Int16Array(N * N).fill(-1);
     this.buildings = [];
     this.rooms = [];
-    this.name = `${pick(r, PLACE_A)} ${pick(r, PLACE_B)}`;
+    this.furniture = [];
+    const tr = r();
+    this.type = tr < 0.4 ? 'lot' : tr < 0.6 ? 'mall' : tr < 0.8 ? 'hospital' : 'school';
+    const force = typeof location !== 'undefined' && new URLSearchParams(location.search).get('place'); // (testing: ?place=mall)
+    if (TYPES[force]) this.type = force;
+    const T = this.T = TYPES[this.type];
+    this.name = `${pick(r, PLACE_A)} ${pick(r, T.names)}`;
     const g = this.grid;
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) if (x < 3 || z < 3 || x >= N - 3 || z >= N - 3) g[z * N + x] = EDGE;
 
@@ -34,28 +46,35 @@ export class World {
     this.van = { x: vx, z: vz, r: 5 };
     for (let z = vz - 3; z <= vz + 1; z++) for (let x = vx - 1; x <= vx; x++) g[z * N + x] = SOLID;
 
-    // Buildings.
-    const want = 3 + (r() < 0.55 ? 1 : 0);
-    for (let tries = 0; tries < 400 && this.buildings.length < want; tries++) {
-      const w = 11 + Math.floor(r() * 8), h = 9 + Math.floor(r() * 7);
-      const x0 = 5 + Math.floor(r() * (N - 10 - w)), z0 = 5 + Math.floor(r() * (N - 22 - h));
-      if (this.buildings.some((b) => x0 < b.x0 + b.w + 4 && x0 + w + 4 > b.x0 && z0 < b.z0 + b.h + 4 && z0 + h + 4 > b.z0)) continue;
-      this.addBuilding(r, x0, z0, w, h);
+    if (this.type === 'lot') {
+      const want = 3 + (r() < 0.55 ? 1 : 0);
+      for (let tries = 0; tries < 400 && this.buildings.length < want; tries++) {
+        const w = 11 + Math.floor(r() * 8), h = 9 + Math.floor(r() * 7);
+        const x0 = 5 + Math.floor(r() * (N - 10 - w)), z0 = 5 + Math.floor(r() * (N - 22 - h));
+        if (this.buildings.some((b) => x0 < b.x0 + b.w + 4 && x0 + w + 4 > b.x0 && z0 < b.z0 + b.h + 4 && z0 + h + 4 > b.z0)) continue;
+        this.addBuilding(r, x0, z0, w, h, { min: 4, depth: 3, door: 1 });
+      }
+      if (this.buildings.length < 3) return false;
+    } else {
+      // one big building, the car park in front
+      this.addBuilding(r, 5, 5, N - 10, 44 + Math.floor(r() * 3), { min: T.min, depth: T.depth, door: T.door, front: true });
     }
-    if (this.buildings.length < 3) return false;
 
-    // Trees between everything.
-    for (let i = 0; i < 70; i++) {
+    // Trees between everything (fewer round a big building).
+    for (let i = 0; i < (this.type === 'lot' ? 70 : 25); i++) {
       const x = 4 + Math.floor(r() * (N - 8)), z = 4 + Math.floor(r() * (N - 8));
       if (!this.clearAround(x, z, 2)) continue;
       if (Math.hypot(x - vx, z - vz) < 9) continue;
       g[z * N + x] = SOLID;
     }
+    this.furnish(r);
 
     // Everything walkable must be reachable from the van.
     const reach = this.flood(vx, vz + 4);
     for (let i = 0; i < N * N; i++) if ((g[i] === FLOOR || g[i] === DOOR) && !reach[i]) return false;
     this.reach = reach;
+    // a ceiling light in every room: some dead, some flickering
+    this.fixtures = this.rooms.map((rm) => ({ x: rm.x0 + rm.w / 2, z: rm.z0 + rm.h / 2, dead: r() < 0.18, flicker: r() < 0.2 }));
     return true;
   }
 
@@ -67,47 +86,46 @@ export class World {
     return true;
   }
 
-  addBuilding(r, x0, z0, w, h) {
-    const g = this.grid, id = this.buildings.length;
-    const b = { id, x0, z0, w, h, color: pick(r, WALL_COLORS), rooms: [] };
+  // o: { min (smallest room side), depth, door (inside doorway width), front (big building: doors face the van) }
+  addBuilding(r, x0, z0, w, h, o) {
+    const g = this.grid, id = this.buildings.length, m = o.min, dw = o.door;
+    const b = { id, x0, z0, w, h, color: pick(r, this.T.walls), rooms: [] };
     this.buildings.push(b);
     for (let z = z0; z < z0 + h; z++) for (let x = x0; x < x0 + w; x++) {
       const edge = x === x0 || z === z0 || x === x0 + w - 1 || z === z0 + h - 1;
       g[z * N + x] = edge ? WALL : FLOOR;
       this.bid[z * N + x] = id;
     }
+    const room = (rx, rz, rw, rh) => { const rm = { b: id, x0: rx, z0: rz, w: rw, h: rh }; b.rooms.push(rm); this.rooms.push(rm); };
     // Split the inside into rooms.
     const split = (rx, rz, rw, rh, depth) => {
-      const canV = rw >= 9, canH = rh >= 8;
-      if ((!canV && !canH) || depth > 3 || (depth > 1 && r() < 0.25)) { const room = { b: id, x0: rx, z0: rz, w: rw, h: rh }; b.rooms.push(room); this.rooms.push(room); return; }
+      const canV = rw >= m * 2 + 1, canH = rh >= m * 2;
+      if ((!canV && !canH) || depth > o.depth || (depth > 1 && r() < 0.22)) { room(rx, rz, rw, rh); return; }
       const vertical = canV && (!canH || rw > rh || (rw === rh && r() < 0.5));
       for (let t = 0; t < 12; t++) {
         if (vertical) {
-          const sx = rx + 4 + Math.floor(r() * (rw - 8));
+          const sx = rx + m + Math.floor(r() * (rw - m * 2));
           if (g[(rz - 1) * N + sx] === DOOR || g[(rz + rh) * N + sx] === DOOR) continue;
           for (let z = rz; z < rz + rh; z++) g[z * N + sx] = WALL;
-          const dz = rz + 1 + Math.floor(r() * (rh - 2));
-          g[dz * N + sx] = DOOR;
+          const d = Math.min(dw, rh - 2), dz = rz + 1 + Math.floor(r() * (rh - 1 - d));
+          for (let i = 0; i < d; i++) g[(dz + i) * N + sx] = DOOR;
           split(rx, rz, sx - rx, rh, depth + 1); split(sx + 1, rz, rx + rw - sx - 1, rh, depth + 1);
           return;
         }
-        const sz = rz + 4 + Math.floor(r() * (rh - 8));
+        const sz = rz + m + Math.floor(r() * (rh - m * 2));
         if (g[sz * N + rx - 1] === DOOR || g[sz * N + rx + rw] === DOOR) continue;
         for (let x = rx; x < rx + rw; x++) g[sz * N + x] = WALL;
-        const dx = rx + 1 + Math.floor(r() * (rw - 2));
-        g[sz * N + dx] = DOOR;
+        const d = Math.min(dw, rw - 2), dx = rx + 1 + Math.floor(r() * (rw - 1 - d));
+        for (let i = 0; i < d; i++) g[sz * N + dx + i] = DOOR;
         split(rx, rz, rw, sz - rz, depth + 1); split(rx, sz + 1, rw, rz + rh - sz - 1, depth + 1);
         return;
       }
-      const room = { b: id, x0: rx, z0: rz, w: rw, h: rh }; b.rooms.push(room); this.rooms.push(room);
+      room(rx, rz, rw, rh);
     };
     split(x0 + 1, z0 + 1, w - 2, h - 2, 0);
-    // Doors to the outside (two cells wide), on two or three sides, never into an inside wall.
-    const sides = shuffle(r, ['n', 's', 'e', 'w']);
-    let made = 0;
-    for (const s of sides) {
-      if (made >= 2 + (r() < 0.4 ? 1 : 0)) break;
-      for (let t = 0; t < 20; t++) {
+    // Doors to the outside (two cells wide), never into an inside wall. A big building gets two at the front.
+    const door = (s) => {
+      for (let t = 0; t < 30; t++) {
         let cells;
         if (s === 'n' || s === 's') {
           const x = x0 + 2 + Math.floor(r() * (w - 5)), z = s === 'n' ? z0 : z0 + h - 1, iz = s === 'n' ? z + 1 : z - 1;
@@ -119,9 +137,29 @@ export class World {
           cells = [[x, z], [x, z + 1]];
         }
         for (const [x, z] of cells) g[z * N + x] = DOOR;
-        made++;
-        break;
+        return true;
       }
+      return false;
+    };
+    if (o.front) { door('s'); door('s'); door(pick(r, ['e', 'w'])); }
+    else { let made = 0; for (const s of shuffle(r, ['n', 's', 'e', 'w'])) { if (made >= 2 + (r() < 0.4 ? 1 : 0)) break; if (door(s)) made++; } }
+  }
+
+  // Furniture: only inside a room's outer ring of cells, so the ring (and every doorway) stays walkable.
+  furnish(r) {
+    const g = this.grid, kind = this.T.furn;
+    for (const rm of this.rooms) {
+      if (rm.w < 5 || rm.h < 5) continue;
+      const put = (cells, k, rot) => {
+        if (cells.some(([x, z]) => x <= rm.x0 || z <= rm.z0 || x >= rm.x0 + rm.w - 1 || z >= rm.z0 + rm.h - 1 || g[z * N + x] !== FLOOR)) return false;
+        for (const [x, z] of cells) g[z * N + x] = FURN;
+        this.furniture.push({ x: cells[0][0], z: cells[0][1], k, rot, n: cells.length });
+        return true;
+      };
+      if (kind === 'bed') for (let z = rm.z0 + 2; z < rm.z0 + rm.h - 2; z += 3) put([[rm.x0 + 1 + 1, z], [rm.x0 + 3, z]], 'bed', 0) && r() < 0.5 && put([[rm.x0 + rm.w - 4, z], [rm.x0 + rm.w - 3, z]], 'bed', 0);
+      if (kind === 'desk') { let n = 0; for (let z = rm.z0 + 2; z < rm.z0 + rm.h - 2; z += 2) for (let x = rm.x0 + 2; x < rm.x0 + rm.w - 2; x += 2) if (n < 16 && r() < 0.8 && put([[x, z]], 'desk', 0)) n++; } // a classroom, not a gym full of desks
+      if (kind === 'shelf') for (let x = rm.x0 + 2; x < rm.x0 + rm.w - 2; x += 3) if (r() < 0.75) put([[x, rm.z0 + 2], [x, rm.z0 + 3]], 'shelf', 1);
+      if (kind === 'table' && r() < 0.6) put([[rm.x0 + 1 + Math.floor(r() * (rm.w - 3)) + 0, rm.z0 + 1 + Math.floor(r() * (rm.h - 3)) + 0]].map(([x, z]) => [Math.max(rm.x0 + 1, x), Math.max(rm.z0 + 1, z)]), 'table', 0);
     }
   }
 
@@ -308,18 +346,23 @@ export function buildScene(world, scene) {
   });
   group.add(walls);
 
+  const tile = canvasTex(64, 64, (c, w, h) => { c.fillStyle = '#d8d4cc'; c.fillRect(0, 0, w, h); c.fillStyle = '#b8b4ac'; c.fillRect(0, 0, w, 2); c.fillRect(0, 0, 2, h); c.fillStyle = 'rgba(80,70,60,0.15)'; for (let i = 0; i < 40; i++) c.fillRect(Math.random() * w, Math.random() * h, 3, 3); });
+  const lino = canvasTex(128, 128, (c, w, h) => speckle(c, w, h, '#9fb4a4', ['#8fa494', '#afc4b4', '#94a898'], 700, 3));
+  const floorTex = { wood, tile, lino }[world.T.floor] || wood;
+
   // Floors, door lintels and roofs.
-  const floorMat = new THREE.MeshLambertMaterial({ map: wood });
+  const floorMat = new THREE.MeshLambertMaterial({ map: floorTex });
   const roofMat = new THREE.MeshLambertMaterial({ color: 0x2a2526 });
   const lintelMat = new THREE.MeshLambertMaterial({ color: 0x3a3029 });
   for (const b of world.buildings) {
-    const fm = floorMat.clone(); fm.map = wood.clone(); fm.map.needsUpdate = true; fm.map.repeat.set(b.w / 2, b.h / 2);
+    const fm = floorMat.clone(); fm.map = floorTex.clone(); fm.map.needsUpdate = true; fm.map.repeat.set(b.w / 2, b.h / 2);
     const f = new THREE.Mesh(new THREE.PlaneGeometry(b.w, b.h), fm);
     f.rotation.x = -Math.PI / 2; f.position.set(b.x0 + b.w / 2, 0.01, b.z0 + b.h / 2);
     group.add(f);
     const roof = new THREE.Mesh(new THREE.BoxGeometry(b.w + 0.6, 0.3, b.h + 0.6), roofMat);
     roof.position.set(b.x0 + b.w / 2, WALL_H + 0.15, b.z0 + b.h / 2);
     group.add(roof);
+    if (world.type !== 'lot') continue; // a big building has a flat roof
     // a gable: a triangular prism along the building's length, apex up
     const pg = new THREE.CylinderGeometry(1, 1, b.w + 0.6, 3, 1); pg.rotateZ(Math.PI / 2); pg.rotateX(-Math.PI / 2);
     const prism = new THREE.Mesh(pg, roofMat);
@@ -355,9 +398,40 @@ export function buildScene(world, scene) {
   });
   group.add(tm, bm);
 
+  buildFurniture(world, group);
+  // ceiling lights (events.js lights the nearest few and turns them off in a power cut)
+  for (const fx of world.fixtures) {
+    const mat = new THREE.MeshBasicMaterial({ color: fx.dead ? 0x222222 : 0xfff4d8 });
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.3), mat);
+    lamp.position.set(fx.x, WALL_H - 0.05, fx.z);
+    group.add(lamp);
+    fx.mat = mat;
+  }
   group.add(buildVan(world));
   scene.add(group);
   return group;
+}
+
+// Instanced furniture: hospital beds, school desks (with a chair), shop shelves, tables.
+function buildFurniture(world, group) {
+  const lam = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+  const parts = {
+    bed: [[new THREE.BoxGeometry(1.9, 0.12, 0.9), lam(0xc8ccd0), 1, 0.5, 0.5], [new THREE.BoxGeometry(1.8, 0.16, 0.85), lam(0xe8ecee), 1, 0.64, 0.5], [new THREE.BoxGeometry(0.35, 0.12, 0.6), lam(0xffffff), 0.3, 0.78, 0.5], [new THREE.BoxGeometry(0.06, 0.9, 0.9), lam(0x9aa0a6), 1.95, 0.45, 0.5]],
+    desk: [[new THREE.BoxGeometry(0.8, 0.05, 0.55), lam(0x9a7448), 0.5, 0.72, 0.4], [new THREE.BoxGeometry(0.7, 0.68, 0.05), lam(0x6a6a70), 0.5, 0.36, 0.15], [new THREE.BoxGeometry(0.42, 0.05, 0.42), lam(0x3a5a9a), 0.5, 0.45, 0.85], [new THREE.BoxGeometry(0.42, 0.45, 0.05), lam(0x3a5a9a), 0.5, 0.68, 1.05]],
+    shelf: [[new THREE.BoxGeometry(0.6, 1.8, 1.9), lam(0x8a8e94), 0.5, 0.9, 1], [new THREE.BoxGeometry(0.62, 0.2, 1.7), lam(0xc85a4a), 0.5, 0.6, 1], [new THREE.BoxGeometry(0.62, 0.2, 1.7), lam(0x4a8ac8), 0.5, 1.15, 1], [new THREE.BoxGeometry(0.62, 0.2, 1.7), lam(0xd8c04a), 0.5, 1.6, 1]],
+    table: [[new THREE.BoxGeometry(0.9, 0.06, 0.9), lam(0x6a4a2a), 0.5, 0.75, 0.5], [new THREE.BoxGeometry(0.08, 0.72, 0.08), lam(0x4a3220), 0.5, 0.36, 0.5]],
+  };
+  const m = new THREE.Matrix4();
+  for (const [k, list] of Object.entries(parts)) {
+    const items = world.furniture.filter((f) => f.k === k);
+    if (!items.length) continue;
+    for (const [geo, mat, ox, oy, oz] of list) {
+      const im = new THREE.InstancedMesh(geo, mat, items.length);
+      items.forEach((f, i) => { m.makeTranslation(f.x + ox, oy, f.z + oz); im.setMatrixAt(i, m); });
+      im.castShadow = im.receiveShadow = true;
+      group.add(im);
+    }
+  }
 }
 
 function buildVan(world) {

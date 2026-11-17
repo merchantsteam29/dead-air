@@ -42,6 +42,11 @@ export const LINES = {
   phone: ['ANSWER IT', 'dont answer it', 'who is calling', 'its for you', 'ring ring 💀'],
   bathtub: ['why is the water red', 'DONT LOOK IN THE TUB', 'bubbles??', 'a HAND', 'bath time 💀'],
   portrait: ['did the painting change', 'its eyes are following you', 'the face was different before', 'where did he go'],
+  cart: ['the cart is DRIVING', 'cleanup on aisle 6', 'it wants you', 'clearance sale 💀', 'cart got moves'],
+  xray: ['the skeleton waved', 'hi skeleton', 'count the ribs. COUNT THEM', 'why is it moving', 'spooky scary'],
+  chalkboard: ['READ THE BOARD', 'who wrote that', 'it knows your name', 'teacher is a ghost', 'pop quiz 💀'],
+  fog: ['so foggy', 'silent hill vibes', 'i cant see anything', 'atmosphere 10/10'],
+  bloodmoon: ['BLOOD MOON', 'the moon is RED', 'this is so cursed', 'double views night 🔥'],
   dog: ['GOOD BOY', 'ghost doggo 😭', 'can we keep him', 'throw it again', 'best anomaly ever', 'pet the dog'],
 };
 export const say = (tag, r = Math.random) => pick(r, LINES[tag] || LINES.idle);
