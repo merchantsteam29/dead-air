@@ -56,6 +56,10 @@ no currency: views are only the score.
 - `models.js`: Crew (bean with face, mouth flaps with voice level, hats, flop when down/dead), camcorder, props.
 - `audio.js`: all sounds synthesized; `recMix` is what the camcorder hears.
 
+## Online extras
+- **Quick Play**: public crews host on fixed codes (`QUICK_CODES` in net.js, QQ?2; `newCode` never makes one). `probe()` asks every one at once (`peek` -> `peeked` with `session.peekInfo`: mode public/private, season/night). main.js `listQuick` (#quick), `hostCrew(code, true)` = public.
+- **Rejoin**: while a night is on (`net.locked`) the host keeps a dropped player's place 45 s (`net.away`, the `secret` from welcome). Client: `lostConnection` -> `Session.rejoin` (8 tries, #rejoining) -> host `onRejoin` sends `lastStart` + `resume` {time, x, z, yaw} to that player only -> beginNight keeps the tape. `tools/online.mjs` tests both.
+
 ## Performance
 - `node tools/perf.mjs` prints frame time, draw calls and triangles in a few spots (headless numbers: compare before / after only).
 - Every light costs every pixel: headlamp spot lights only for actual friends (`lamps`), 3 fixture lights (events.js pool), no light on the view model or the dog. Never add or remove lights mid-night (shader rebuilds).

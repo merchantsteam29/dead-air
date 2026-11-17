@@ -42,6 +42,25 @@ export class Session {
     this.startVoice();
     this.net.send({ t: 'me', look: this.look });
   }
+  // After a drop: get back into the same room as the same player (the host keeps our place for 45 s).
+  async rejoin(onTry = () => {}) {
+    const code = this.net.code, id = this.net.id, secret = this.net.secret;
+    if (!code || !secret) return false;
+    try { this.vc?.dispose(); } catch { /* gone */ }
+    this.vc = null;
+    try { this.net.destroy(); } catch { /* gone */ }
+    for (let i = 0; i < 8; i++) {
+      onTry(i);
+      try {
+        this.net = new Net(); this.wire();
+        await this.net.join(code, this.name, { id, secret });
+        this.startVoice();
+        this.net.send({ t: 'me', look: this.look });
+        return true;
+      } catch (e) { try { this.net.destroy(); } catch { /* gone */ } await new Promise((r) => setTimeout(r, 2500)); }
+    }
+    return false;
+  }
   startVoice() {
     try { this.vc = new VoiceChat(this.net, this.sfx, this.mic); this.vc.sync(this.net.roster); } catch (e) { console.warn('voice chat', e); }
   }
@@ -51,6 +70,8 @@ export class Session {
     n.onMessage = (m, from) => this.receive(m, from);
     n.onRoster = (r) => { this.vc?.sync(r); if (this.isHost) this.sendLobby(); this.onLobby(); };
     n.onClose = (why) => this.onClose(why);
+    n.onRejoin = (id) => { this.vc?.sync(n.roster); this.onRejoin?.(id); };
+    n.peekInfo = () => this.peekInfo?.() || {};
   }
 
   sendLobby() {

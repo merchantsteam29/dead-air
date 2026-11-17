@@ -9,7 +9,7 @@ import { Review } from './review.js';
 import { recordNight, renderChannel } from './stats.js';
 import { tutorialWanted, resetTutorial } from './tutorial.js';
 import { Crew, COLORS, COLOR_NAMES, HATS } from './models.js';
-import { cleanCode, cleanName } from './net.js';
+import { cleanCode, cleanName, QUICK_CODES, probe } from './net.js';
 import { fmt, clamp } from './util.js';
 import { createGovernor } from '../perf.js';
 
@@ -77,7 +77,7 @@ function drawTitle(dt) {
 }
 
 // ---------- screens ----------
-const SCREENS = ['title', 'lobby', 'howto', 'settings', 'pause', 'uploading', 'msg', 'channel'];
+const SCREENS = ['title', 'lobby', 'howto', 'settings', 'pause', 'uploading', 'msg', 'channel', 'quick', 'rejoining'];
 function show(id) { for (const s of SCREENS) $(s).hidden = s !== id; document.body.dataset.screen = id || 'game'; }
 function msg(text, back = 'title') { $('msgText').textContent = text; show('msg'); $('msgOk').onclick = () => { sfx.play('click'); show(back); }; }
 
@@ -145,12 +145,28 @@ async function playAlone() {
   newRun();
   startNight();
 }
-async function hostCrew(code) {
+// Quick Play: there's no server, so public rooms use a fixed set of codes. probe() looks in all of them at once.
+let quickT = null;
+async function listQuick() {
+  clearTimeout(quickT);
+  const box = $('quickList');
+  box.innerHTML = '<p class="hint">Looking for public crews...</p>';
+  const r = await probe(QUICK_CODES, 6000);
+  if ($('quick').hidden) return;
+  const rooms = r.open.map((c) => ({ code: c, ...(r.info[c] || {}) })).filter((x) => x.mode !== 'private');
+  box.innerHTML = rooms.length ? rooms.map((x) => `<div class="qrow"><b>${esc(x.host || 'Room ' + x.code)}'s crew</b><span>${'●'.repeat(x.n || 1)}${'○'.repeat(Math.max(0, (x.max || 4) - (x.n || 1)))}</span><small>${x.started ? 'out filming' : 'in the lobby'}${x.map ? ' · ' + esc(x.map) : ''}</small><button data-q="${x.code}" ${x.started || (x.n || 1) >= (x.max || 4) ? 'disabled' : ''}>${(x.n || 1) >= (x.max || 4) ? 'Full' : x.started ? 'Filming' : 'Join'}</button></div>`).join('')
+    : '<p class="hint">No public crews right now. Host one and others can find you here.</p>';
+  box.querySelectorAll('[data-q]').forEach((b) => b.onclick = () => { sfx.play('click'); clearTimeout(quickT); joinCrew(b.dataset.q); });
+  quickT = setTimeout(() => { if (!$('quick').hidden) listQuick(); }, 20000);
+}
+
+async function hostCrew(code, isPublic = false) {
   await boot(); await getMic();
   session = new Session({ sfx, mic: mic || null, name: settings.name, look: cleanLook(settings) });
   wireSession();
   $('lobbyStatus').textContent = 'Opening a room...';
   show('lobby');
+  session.public = isPublic;
   try { await session.host(code); } catch (e) { session = null; msg(e.message); return; }
   newRun();
   session.lobbyExtra = () => ({ run: run && { season: run.season, night: run.night, quota: run.quota, seasonViews: run.seasonViews } });
@@ -168,6 +184,21 @@ async function joinCrew(code) {
   try { await session.join(code); } catch (e) { session = null; msg(e.message); return; }
   renderLobby();
 }
+// Dropped out of a night: try to get back in (the host keeps your place for 45 s), else back to the title.
+async function lostConnection(why) {
+  if (!session || session.isHost || !session.online || !session.net.secret || !(game || !$('review').hidden || !$('uploading').hidden)) { leaveCrew(why); return; }
+  const was = session;
+  endGame(); review.hide(); input.unlock();
+  show('rejoining');
+  const ok = await was.rejoin((i) => { $('rejoinText').textContent = `Lost the connection. Getting you back in${'.'.repeat(1 + (i % 3))} (try ${i + 1})`; });
+  if (session !== was) return; // they left meanwhile
+  if (!ok) { leaveCrew('Lost the connection to the host, and could not get back in.'); return; }
+  $('rejoinText').textContent = 'Back in! Waiting for the host...';
+  // the host sends tonight's start again ('resume'); between nights we just land in the lobby
+  setTimeout(() => { if (session === was && !game && !$('rejoining').hidden) { show('lobby'); renderLobby(); } }, 6000);
+}
+let lastStart = null;
+
 function leaveCrew(why) {
   endGame();
   review.hide();
@@ -179,7 +210,14 @@ function leaveCrew(why) {
 
 function wireSession() {
   session.onLobby = () => { if (!game && $('lobby').hidden === false) renderLobby(); };
-  session.onClose = (why) => leaveCrew(why || 'Lost the connection.');
+  session.onClose = (why) => lostConnection(why || 'Lost the connection.');
+  session.onRejoin = (id) => { // host: a friend is back; put them straight back into tonight
+    if (!game || game.over || !lastStart) return;
+    const P = game.players.get(id);
+    session.net.sendTo(id, { ...lastStart, resume: { time: game.time, x: P?.x, z: P?.z, yaw: P?.yaw } });
+    game.toast(`${P?.name || 'Someone'} is back.`, 3);
+  };
+  session.peekInfo = () => ({ mode: session.public ? 'public' : 'private', map: run ? `Season ${run.season} · night ${run.night}` : '' });
   session.onGame = (m, from) => {
     if (m.t === 'quit' && session.isHost && !game) { session.sendLobby(); return; }
     game?.onNet(m, from);
@@ -205,14 +243,14 @@ function startNight() {
   if (run.night === 1 && run.seasonViews === 0) run.quota = quotaFor(run.season); // the crew size can change between seasons
   session.net.locked = true;
   session.resetHighlights();
-  session.net.broadcast({ t: 'start', seed: (run.seed + run.season * 1013 + run.night * 7919) >>> 0, night: run.night, season: run.season, quota: run.quota, seasonViews: run.seasonViews, nightOf: NIGHTS, crew: session.crew() });
+  lastStart = { t: 'start', seed: (run.seed + run.season * 1013 + run.night * 7919) >>> 0, night: run.night, season: run.season, quota: run.quota, seasonViews: run.seasonViews, nightOf: NIGHTS, crew: session.crew() };
+  session.net.broadcast(lastStart);
 }
 
 function beginNight(m) {
   endGame();
   review.hide();
-  session.resetHighlights();
-  tape.reset();
+  if (!m.resume) { session.resetHighlights(); tape.reset(); }
   show(null);
   paused = false;
   run = run || {};
@@ -222,6 +260,11 @@ function beginNight(m) {
   gov.reset();
   micLabel();
   if (!input.touchMode && !input.padMode) input.lock();
+  if (m.resume) { // back after a drop: pick up where the night is, standing where we were
+    game.time = m.resume.time;
+    if (m.resume.x !== undefined) { game.me.x = game.me.rx = m.resume.x; game.me.z = game.me.rz = m.resume.z; game.me.yaw = m.resume.yaw || 0; }
+    game.toast("You're back in.", 3);
+  }
   if (TEST) window.__da.game = game;
 }
 
@@ -300,7 +343,7 @@ $('rvSkip').onclick = () => { review.stopped = true; };
 function renderLobby() {
   if (!session) return;
   const code = session.net.code;
-  $('lobbyStatus').textContent = session.isHost ? 'You are the host. Friends join with this code:' : 'In the crew. Waiting for the host to start.';
+  $('lobbyStatus').textContent = session.isHost ? (session.public ? 'Public crew: anyone on Quick Play can join. Or share the code:' : 'You are the host. Friends join with this code:') : 'In the crew. Waiting for the host to start.';
   $('lobbyCode').textContent = code || '';
   const link = `${location.origin}${location.pathname}?join=${code}`;
   $('lobbyLink').value = link;
@@ -324,6 +367,17 @@ click('btnHost', () => hostCrew());
 click('btnJoin', () => joinCrew($('joinCode').value));
 $('joinCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinCrew($('joinCode').value); });
 click('btnHow', () => show('howto'));
+click('btnQuick', () => { show('quick'); listQuick(); });
+click('quickBack', () => { clearTimeout(quickT); show('title'); });
+click('quickRefresh', () => listQuick());
+click('quickHost', async () => {
+  $('quickList').innerHTML = '<p class="hint">Finding a free public room...</p>';
+  const r = await probe(QUICK_CODES, 5000);
+  const code = r.free[Math.floor(Math.random() * r.free.length)];
+  if (!code) { $('quickList').innerHTML = '<p class="hint">Every public room is busy. Try one of them, or host a private crew.</p>'; return; }
+  clearTimeout(quickT);
+  await hostCrew(code, true);
+});
 click('btnChannel', () => { renderChannel($('chBody'), settings.name, '#' + new THREE.Color(COLORS[settings.color]).getHexString()); show('channel'); });
 click('chBack', () => show('title'));
 click('btnSettings', () => { settingsBack = game ? 'pause' : 'title'; fillSettings(); show('settings'); });

@@ -39,6 +39,7 @@
     <div class="row">Your look <div id="lookPick" class="look"></div></div>
     <button id="btnSolo" class="big">Play alone</button>
     <button id="btnHost" class="big alt">Host a crew <small>(up to 4, voice chat)</small></button>
+    <button id="btnQuick" class="big quickBtn">Quick Play <small>(join strangers)</small></button>
     <div class="joinRow"><input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off"><button id="btnJoin">Join a crew</button></div>
     <p id="joinHint" class="hint" hidden>You were invited! Press Join a crew.</p>
     <div class="small"><button id="btnChannel">Your channel</button><button id="btnHow">How to play</button><button id="btnSettings">Settings</button><button id="installApp" style="display:none">Install app</button><button id="pcDownload">Download for PC</button></div>
@@ -109,6 +110,19 @@
 
 <section id="channel" class="screen" hidden>
   <div class="card wide"><div id="chBody"></div><button id="chBack">Back</button></div>
+</section>
+
+<section id="quick" class="screen" hidden>
+  <div class="card wide">
+    <h2>Quick Play</h2>
+    <p class="hint">Public crews you can join without a code. Be nice: they can hear you.</p>
+    <div id="quickList"></div>
+    <button id="quickHost" class="big alt">Host a public crew</button>
+    <button id="quickRefresh">Refresh</button> <button id="quickBack">Back</button>
+  </div>
+</section>
+<section id="rejoining" class="screen" hidden>
+  <div class="card"><div class="spin"></div><p id="rejoinText">Lost the connection. Getting you back in...</p></div>
 </section>
 
 <section id="uploading" class="screen" hidden>
