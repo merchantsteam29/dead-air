@@ -78,9 +78,9 @@
       <li><b>Blood rain</b> drains your stamina and battery outside. Get under a roof, or film it for double views.</li>
       <li>Your friends' screams, falls and arguments on camera count too, and the best 8 seconds of every tape go in the upload, with sound.</li>
     </ul>
-    <p class="keys"><kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>E</kbd> pick up · <kbd>Click</kbd> throw · <kbd>Q</kbd> drop · <kbd>Right click</kbd> film · <kbd>N</kbd> night vision · <kbd>F</kbd> headlamp · <kbd>Z</kbd> emotes (hold) · <kbd>G</kbd> wave · <kbd>Tab</kbd> crew + van · <kbd>M</kbd> mute</p>
+    <p class="keys"><kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>E</kbd> pick up · <kbd>Click</kbd> throw · <kbd>Q</kbd> drop · <kbd>Right click</kbd> film · <kbd>N</kbd> night vision · <kbd>F</kbd> headlamp · <kbd>Z</kbd> emotes (hold) · <kbd>G</kbd> wave · <kbd>Tab</kbd> crew + van · <kbd>M</kbd> mute · <kbd>V</kbd> push to talk (if on in Settings)</p>
     <p class="keys">Controller: <kbd>LT</kbd> film · <kbd>RT</kbd> throw · <kbd>X</kbd> pick up · <kbd>B</kbd> drop · <kbd>A</kbd> jump · <kbd>LB</kbd> run · <kbd>RB</kbd> night vision · <kbd>Y</kbd> headlamp · <kbd>D-pad</kbd> emotes · <kbd>View</kbd> crew. Phones work too.</p>
-    <button id="howBack">Back</button>
+    <button id="howBack">Back</button> <button id="btnTutorial">Play the tutorial again</button>
   </div>
 </section>
 
@@ -89,6 +89,8 @@
   <div class="card wide">
     <h2>Settings</h2>
     <div id="setRows" class="setRows"></div>
+    <div class="micTest"><button id="micTestBtn">Test mic</button><div class="mbar"><i id="micBar"></i></div></div>
+    <p id="micTestNote" class="hint"></p>
     <button id="setBack">Back</button>
   </div>
 </section>
@@ -123,6 +125,7 @@
   <div id="prompt" hidden></div>
   <div id="stam"><i></i></div>
   <div id="toast"></div>
+  <div id="coach" hidden></div>
   <div id="vanArrow" hidden></div>
   <div id="spec" hidden></div>
   <div id="micInd">🎤</div>
@@ -179,6 +182,7 @@
   <div class="tb" data-t="drop" style="right:190px;bottom:40px">DROP</div>
   <div class="tb" data-t="nv" style="right:190px;bottom:110px">NV</div>
   <div class="tb" data-t="sprint" style="left:20px;bottom:160px">RUN</div>
+  <div class="tb big pttOnly" data-t="talk" style="left:20px;bottom:240px">TALK</div>
 </div>
 
 <script src="install.js"></script>

@@ -7,6 +7,7 @@ import { Session, cleanLook } from './session.js';
 import { TapeRec } from './tape.js';
 import { Review } from './review.js';
 import { recordNight, renderChannel } from './stats.js';
+import { tutorialWanted, resetTutorial } from './tutorial.js';
 import { Crew, COLORS, COLOR_NAMES, HATS } from './models.js';
 import { cleanCode, cleanName } from './net.js';
 import { fmt, clamp } from './util.js';
@@ -18,7 +19,7 @@ const TEST = params.has('test');
 const NIGHTS = 3;
 
 // ---------- settings ----------
-const DEFAULTS = { name: '', color: Math.floor(Math.random() * 8), hat: 'cap', sens: 1, fov: 75, vol: 0.8, voiceVol: 1, voiceMode: 'clear', pads: true, quality: 'auto', bright: 1, padSens: 1 };
+const DEFAULTS = { name: '', color: Math.floor(Math.random() * 8), hat: 'cap', sens: 1, fov: 75, vol: 0.8, voiceVol: 1, voiceMode: 'clear', mic: 'open', pads: true, quality: 'auto', bright: 1, padSens: 1 };
 const settings = (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('deadair.settings') || '{}') }; } catch { return { ...DEFAULTS }; } })();
 if (!settings.name) settings.name = 'Crew' + Math.floor(100 + Math.random() * 900);
 const save = () => { try { localStorage.setItem('deadair.settings', JSON.stringify(settings)); } catch { /* private mode */ } };
@@ -80,7 +81,19 @@ const SCREENS = ['title', 'lobby', 'howto', 'settings', 'pause', 'uploading', 'm
 function show(id) { for (const s of SCREENS) $(s).hidden = s !== id; document.body.dataset.screen = id || 'game'; }
 function msg(text, back = 'title') { $('msgText').textContent = text; show('msg'); $('msgOk').onclick = () => { sfx.play('click'); show(back); }; }
 
-let session = null, game = null, run = null, mic = null, micLevel = () => 0, micMuted = false, paused = false, endInfo = null;
+let session = null, game = null, run = null, mic = null, micLevel = () => 0, micRaw = () => 0, micMuted = false, micOpen = true, paused = false, endInfo = null;
+
+// Push to talk: the mic track is only on while V / R3 / TALK is held. (The same track feeds voice chat and the tape.)
+function updateMicGate() {
+  const held = input.down('KeyV') || !!input.pad?.talk;
+  const open = !micMuted && (settings.mic !== 'ptt' || held);
+  document.body.classList.toggle('ptt', settings.mic === 'ptt');
+  if (open === micOpen) return;
+  micOpen = open;
+  if (mic) for (const t of mic.getAudioTracks()) t.enabled = open;
+  const ind = $('micInd');
+  ind.classList.toggle('talking', open && settings.mic === 'ptt');
+}
 
 // ---------- the microphone ----------
 async function getMic() {
@@ -93,8 +106,9 @@ async function getMic() {
   src.connect(sfx.recMix); // the camcorder hears you
   const buf = new Float32Array(an.fftSize);
   let lvl = 0, last = 0;
+  micRaw = () => { an.getFloatTimeDomainData(buf); let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i]; return clamp((Math.sqrt(s / buf.length) - 0.012) * 7, 0, 1); };
   micLevel = () => {
-    if (micMuted) return 0;
+    if (micMuted || !micOpen) return 0;
     const now = performance.now();
     if (now - last < 30) return lvl;
     last = now;
@@ -108,9 +122,12 @@ async function getMic() {
 }
 function setMute(m) {
   micMuted = m;
-  if (mic) for (const t of mic.getAudioTracks()) t.enabled = !m;
   $('micInd').classList.toggle('muted', m);
-  $('micInd').textContent = m ? '🎤✕ muted (M)' : '🎤';
+  micOpen = null; updateMicGate(); micLabel();
+}
+
+function micLabel() {
+  $('micInd').textContent = micMuted ? '🎤✕ muted (M)' : settings.mic === 'ptt' ? `🎤 hold ${input.label('V', 'R3').replace(/[\[\]]/g, '')} to talk` : '🎤';
 }
 
 async function boot() {
@@ -200,9 +217,10 @@ function beginNight(m) {
   paused = false;
   run = run || {};
   Object.assign(run, { season: m.season, night: m.night, quota: m.quota, seasonViews: m.seasonViews });
-  game = new Game({ renderer, sfx, input, net: session.net, vc: session.vc, tape, myId: session.myId, crew: m.crew, seed: m.seed, night: m.night, season: m.season, quota: m.quota, seasonViews: m.seasonViews, nightOf: m.nightOf, settings, micLevel: () => micLevel(), onEnd: onNightEnd });
+  game = new Game({ renderer, sfx, input, net: session.net, vc: session.vc, tape, myId: session.myId, crew: m.crew, seed: m.seed, night: m.night, season: m.season, quota: m.quota, seasonViews: m.seasonViews, nightOf: m.nightOf, settings, micLevel: () => micLevel(), onEnd: onNightEnd, tutorial: !session.online && m.night === 1 && m.season === 1 && (tutorialWanted() || params.has('tutorial')) });
   if (session.vc) { session.vc.mode = settings.voiceMode; session.vc.volume = settings.voiceVol; }
   gov.reset();
+  micLabel();
   if (!input.touchMode && !input.padMode) input.lock();
   if (TEST) window.__da.game = game;
 }
@@ -310,6 +328,7 @@ click('btnChannel', () => { renderChannel($('chBody'), settings.name, '#' + new 
 click('chBack', () => show('title'));
 click('btnSettings', () => { settingsBack = game ? 'pause' : 'title'; fillSettings(); show('settings'); });
 click('howBack', () => show('title'));
+click('btnTutorial', () => { resetTutorial(); $('btnTutorial').textContent = 'Done: the next Play alone starts with it'; });
 click('btnStart', () => startNight());
 click('btnLeaveLobby', () => leaveCrew());
 click('btnCopy', () => { navigator.clipboard?.writeText($('lobbyLink').value).then(() => { $('btnCopy').textContent = 'Copied!'; setTimeout(() => $('btnCopy').textContent = 'Copy invite link', 1500); }).catch(() => $('lobbyLink').select()); });
@@ -319,6 +338,7 @@ click('pLeave', () => leaveCrew());
 click('pMute', () => setMute(!micMuted));
 let settingsBack = 'title';
 click('setBack', () => show(settingsBack));
+click('micTestBtn', async () => { await boot(); await getMic(); $('micTestNote').textContent = mic ? 'Say something: the bar should move.' : 'No microphone (or it was blocked). You can still play.'; });
 $('nameIn').value = settings.name;
 $('nameIn').addEventListener('change', () => { settings.name = cleanName($('nameIn').value); $('nameIn').value = settings.name; save(); });
 lookPicker($('lookPick'));
@@ -334,6 +354,7 @@ function fillSettings() {
     ['Volume', 'range', 'vol', 0, 1, 0.05],
     ["Friends' voices", 'range', 'voiceVol', 0, 1.5, 0.05],
     ['Brightness', 'range', 'bright', 0.6, 1.8, 0.05],
+    ['Microphone', 'select', 'mic', [['open', 'Open mic (always on)'], ['ptt', 'Push to talk (hold V / R3 / TALK)']]],
     ["How friends' voices sound", 'select', 'voiceMode', [['clear', 'Clear (like a call, best quality)'], ['3d', '3D (comes from where they are)']]],
     ['Graphics', 'select', 'quality', [['auto', 'Auto'], ['high', 'Sharp'], ['low', 'Fast']]],
     ['Controllers', 'select', 'pads', [['true', 'On'], ['false', 'Off (ignore every gamepad)']]],
@@ -352,6 +373,7 @@ function applySettings() {
   sfx.setVolume(settings.vol);
   renderer.toneMappingExposure = 1.15 * settings.bright;
   input.pads = settings.pads; input.padSens = settings.padSens;
+  micOpen = null; updateMicGate(); micLabel();
   if (session?.vc) { session.vc.mode = settings.voiceMode; session.vc.volume = settings.voiceVol; }
   renderer.setPixelRatio(basePR() * gov.scale); renderer.setSize(innerWidth, innerHeight); game?.resize();
 }
@@ -384,6 +406,8 @@ function loop(now) {
   const raw = (now - last) / 1000; last = now;
   const dt = Math.min(0.05, raw);
   input.pollPad(dt);
+  updateMicGate();
+  if (!$('settings').hidden) $('micBar').style.width = (micRaw() * 100).toFixed(0) + '%';
   if (input.pad?.pause && game && !game.over) { if (paused) resume(); else openPause(); }
   if (game) {
     if (paused && !session.online) { /* frozen alone */ }
@@ -404,7 +428,7 @@ show('title');
 document.body.classList.add('ready');
 const joinParam = params.get('join');
 if (joinParam) { $('joinCode').value = cleanCode(joinParam); $('joinHint').hidden = false; }
-if (TEST) window.__da = { get session() { return session; }, settings, playAlone, hostCrew, joinCrew, startNight, sfx, input, renderer, get run() { return run; } };
+if (TEST) window.__da = { get session() { return session; }, settings, playAlone, hostCrew, joinCrew, startNight, sfx, input, renderer, get run() { return run; }, micTrack: () => mic ? mic.getAudioTracks()[0].enabled : null };
 if (params.has('autostart')) playAlone();
 
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

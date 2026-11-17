@@ -5,7 +5,7 @@ import { rng, pick, shuffle, clamp } from './util.js';
 
 export const GROUND = 0, FLOOR = 1, WALL = 2, EDGE = 3, SOLID = 4, DOOR = 5, FURN = 6; // FURN: furniture (blocks walking, not sight)
 export const WALL_H = 3;
-const N = 72;
+const N = 84;
 
 const PLACE_A = ['Pinegrove', 'Hollis', 'Saint Agnes', 'Blackwater', 'Merriweather', 'Cold Spring', 'Ashby', 'Lantern Hill', 'Greyfield', 'Willow Bend', 'Crane Lake', 'Dunmore'];
 // Location types. lot: open ground with 3-4 small buildings. mall / hospital / school: one big building of many rooms
@@ -47,17 +47,17 @@ export class World {
     for (let z = vz - 3; z <= vz + 1; z++) for (let x = vx - 1; x <= vx; x++) g[z * N + x] = SOLID;
 
     if (this.type === 'lot') {
-      const want = 3 + (r() < 0.55 ? 1 : 0);
+      const want = 4 + (r() < 0.55 ? 1 : 0);
       for (let tries = 0; tries < 400 && this.buildings.length < want; tries++) {
         const w = 11 + Math.floor(r() * 8), h = 9 + Math.floor(r() * 7);
         const x0 = 5 + Math.floor(r() * (N - 10 - w)), z0 = 5 + Math.floor(r() * (N - 22 - h));
         if (this.buildings.some((b) => x0 < b.x0 + b.w + 4 && x0 + w + 4 > b.x0 && z0 < b.z0 + b.h + 4 && z0 + h + 4 > b.z0)) continue;
         this.addBuilding(r, x0, z0, w, h, { min: 4, depth: 3, door: 1 });
       }
-      if (this.buildings.length < 3) return false;
+      if (this.buildings.length < 4) return false;
     } else {
       // one big building, the car park in front
-      this.addBuilding(r, 5, 5, N - 10, 44 + Math.floor(r() * 3), { min: T.min, depth: T.depth, door: T.door, front: true });
+      this.addBuilding(r, 5, 5, N - 10, 54 + Math.floor(r() * 4), { min: T.min, depth: T.depth, door: T.door, front: true });
     }
 
     // Trees between everything (fewer round a big building).
@@ -67,6 +67,13 @@ export class World {
       if (Math.hypot(x - vx, z - vz) < 9) continue;
       g[z * N + x] = SOLID;
     }
+    // lamp posts out on the ground, well apart
+    this.posts = [];
+    for (let i = 0; i < 300 && this.posts.length < (this.type === 'lot' ? 9 : 6); i++) {
+      const x = 5 + Math.floor(r() * (N - 10)), z = 5 + Math.floor(r() * (N - 10));
+      if (!this.clearAround(x, z, 1) || Math.hypot(x - vx, z - vz) < 7 || this.posts.some((p) => Math.hypot(p.x - x, p.z - z) < 12)) continue;
+      g[z * N + x] = SOLID; this.posts.push({ x: x + 0.5, z: z + 0.5, y: 3.4, post: true, dead: r() < 0.15, flicker: r() < 0.25 });
+    }
     this.furnish(r);
 
     // Everything walkable must be reachable from the van.
@@ -74,7 +81,7 @@ export class World {
     for (let i = 0; i < N * N; i++) if ((g[i] === FLOOR || g[i] === DOOR) && !reach[i]) return false;
     this.reach = reach;
     // a ceiling light in every room: some dead, some flickering
-    this.fixtures = this.rooms.map((rm) => ({ x: rm.x0 + rm.w / 2, z: rm.z0 + rm.h / 2, dead: r() < 0.18, flicker: r() < 0.2 }));
+    this.fixtures = this.rooms.map((rm) => ({ x: rm.x0 + rm.w / 2, z: rm.z0 + rm.h / 2, y: 2.7, dead: r() < 0.18, flicker: r() < 0.2 })).concat(this.posts);
     return true;
   }
 
@@ -159,7 +166,12 @@ export class World {
       if (kind === 'bed') for (let z = rm.z0 + 2; z < rm.z0 + rm.h - 2; z += 3) put([[rm.x0 + 1 + 1, z], [rm.x0 + 3, z]], 'bed', 0) && r() < 0.5 && put([[rm.x0 + rm.w - 4, z], [rm.x0 + rm.w - 3, z]], 'bed', 0);
       if (kind === 'desk') { let n = 0; for (let z = rm.z0 + 2; z < rm.z0 + rm.h - 2; z += 2) for (let x = rm.x0 + 2; x < rm.x0 + rm.w - 2; x += 2) if (n < 16 && r() < 0.8 && put([[x, z]], 'desk', 0)) n++; } // a classroom, not a gym full of desks
       if (kind === 'shelf') for (let x = rm.x0 + 2; x < rm.x0 + rm.w - 2; x += 3) if (r() < 0.75) put([[x, rm.z0 + 2], [x, rm.z0 + 3]], 'shelf', 1);
-      if (kind === 'table' && r() < 0.6) put([[rm.x0 + 1 + Math.floor(r() * (rm.w - 3)) + 0, rm.z0 + 1 + Math.floor(r() * (rm.h - 3)) + 0]].map(([x, z]) => [Math.max(rm.x0 + 1, x), Math.max(rm.z0 + 1, z)]), 'table', 0);
+      if (kind === 'table') { // a lived-in room: a table, a sofa, a cabinet (some of them)
+        const at = () => [rm.x0 + 1 + Math.floor(r() * Math.max(1, rm.w - 3)), rm.z0 + 1 + Math.floor(r() * Math.max(1, rm.h - 3))];
+        if (r() < 0.75) { const [x, z] = at(); put([[x, z]], 'table', 0); }
+        if (r() < 0.6) { const [x, z] = at(); put([[x, z], [x + 1, z]], 'sofa', 0); }
+        if (r() < 0.5) { const [x, z] = at(); put([[x, z]], 'cabinet', 0); }
+      }
     }
   }
 
@@ -400,8 +412,27 @@ export function buildScene(world, scene) {
 
   buildFurniture(world, group);
   // ceiling lights (events.js lights the nearest few and turns them off in a power cut)
+  // windows on the outside walls: some still lit
+  const lit = new THREE.MeshBasicMaterial({ color: 0xffd890 }), dark = new THREE.MeshLambertMaterial({ color: 0x0c1420 });
+  const winGeo = new THREE.PlaneGeometry(0.6, 0.7);
+  for (let z = 1; z < N - 1; z++) for (let x = 1; x < N - 1; x++) {
+    if (world.grid[z * N + x] !== WALL || (x * 7 + z * 3) % 3) continue;
+    for (const [dx, dz, ry] of [[0, -1, Math.PI], [0, 1, 0], [-1, 0, -Math.PI / 2], [1, 0, Math.PI / 2]]) {
+      if (world.grid[(z + dz) * N + x + dx] !== GROUND) continue;
+      if ([[dx, dz], [-dx, -dz]].some(([a, b]) => world.grid[(z + a) * N + x + b] !== WALL)) continue; // not at corners or doors
+      const w = new THREE.Mesh(winGeo, ((x * 13 + z * 29) % 10) < 3 ? lit : dark);
+      w.position.set(x + 0.5 + dx * 0.51, 1.7, z + 0.5 + dz * 0.51); w.rotation.y = ry;
+      group.add(w);
+    }
+  }
+  const poleMat = new THREE.MeshLambertMaterial({ color: 0x3a3e44 });
   for (const fx of world.fixtures) {
     const mat = new THREE.MeshBasicMaterial({ color: fx.dead ? 0x222222 : 0xfff4d8 });
+    if (fx.post) { // a lamp post
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 3.5, 6), poleMat); pole.position.set(fx.x, 1.75, fx.z); group.add(pole);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), mat); head.position.set(fx.x, 3.5, fx.z); group.add(head);
+      fx.mat = mat; continue;
+    }
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 0.3), mat);
     lamp.position.set(fx.x, WALL_H - 0.05, fx.z);
     group.add(lamp);
@@ -420,6 +451,8 @@ function buildFurniture(world, group) {
     desk: [[new THREE.BoxGeometry(0.8, 0.05, 0.55), lam(0x9a7448), 0.5, 0.72, 0.4], [new THREE.BoxGeometry(0.7, 0.68, 0.05), lam(0x6a6a70), 0.5, 0.36, 0.15], [new THREE.BoxGeometry(0.42, 0.05, 0.42), lam(0x3a5a9a), 0.5, 0.45, 0.85], [new THREE.BoxGeometry(0.42, 0.45, 0.05), lam(0x3a5a9a), 0.5, 0.68, 1.05]],
     shelf: [[new THREE.BoxGeometry(0.6, 1.8, 1.9), lam(0x8a8e94), 0.5, 0.9, 1], [new THREE.BoxGeometry(0.62, 0.2, 1.7), lam(0xc85a4a), 0.5, 0.6, 1], [new THREE.BoxGeometry(0.62, 0.2, 1.7), lam(0x4a8ac8), 0.5, 1.15, 1], [new THREE.BoxGeometry(0.62, 0.2, 1.7), lam(0xd8c04a), 0.5, 1.6, 1]],
     table: [[new THREE.BoxGeometry(0.9, 0.06, 0.9), lam(0x6a4a2a), 0.5, 0.75, 0.5], [new THREE.BoxGeometry(0.08, 0.72, 0.08), lam(0x4a3220), 0.5, 0.36, 0.5]],
+    sofa: [[new THREE.BoxGeometry(1.8, 0.4, 0.8), lam(0x6a3a4a), 1, 0.3, 0.5], [new THREE.BoxGeometry(1.8, 0.5, 0.2), lam(0x5a2e3c), 1, 0.65, 0.85], [new THREE.BoxGeometry(0.2, 0.55, 0.8), lam(0x5a2e3c), 0.15, 0.4, 0.5], [new THREE.BoxGeometry(0.2, 0.55, 0.8), lam(0x5a2e3c), 1.85, 0.4, 0.5]],
+    cabinet: [[new THREE.BoxGeometry(0.8, 1.4, 0.5), lam(0x5a4028), 0.5, 0.7, 0.5], [new THREE.BoxGeometry(0.7, 0.02, 0.02), lam(0xc8a040), 0.5, 0.9, 0.24]],
   };
   const m = new THREE.Matrix4();
   for (const [k, list] of Object.entries(parts)) {

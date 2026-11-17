@@ -83,9 +83,9 @@ export class NightEvents {
     this.pool.forEach((l, i) => {
       const f = this.near?.[i];
       if (!f || !this.power) { l.intensity = 0; return; }
-      l.position.x = f.x; l.position.z = f.z;
+      l.position.set(f.x, (f.y ?? 2.7) - 0.15, f.z); l.distance = f.post ? 15 : 9;
       const fl = f.flicker ? (Math.random() < 0.08 ? 0.1 : 1) : 1;
-      l.intensity = 3.2 * fl;
+      l.intensity = (f.post ? 7 : 3.2) * fl;
       if (f.mat && f.flicker) f.mat.color.setHex(fl < 0.5 ? 0x222222 : 0xfff4d8);
     });
   }

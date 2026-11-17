@@ -11,6 +11,7 @@ import { Camcorder } from './camcorder.js';
 import { BloodRain, Donations, Bodies } from './chaos.js';
 import { NightEvents } from './events.js';
 import { noteRevive } from './stats.js';
+import { Tutorial } from './tutorial.js';
 import { EmoteWheel, EMOTES, EMOTE_SECS } from './emotes.js';
 import { clamp, angDiff, rng, pick, shuffle, r2, fmt } from './util.js';
 
@@ -32,13 +33,13 @@ export class Game {
     const scene = this.scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1020);
     scene.fog = new THREE.FogExp2(0x0b1020, 0.034);
-    this.hemi = new THREE.HemisphereLight(0x8090c0, 0x202018, 0.24); scene.add(this.hemi);
+    this.hemi = new THREE.HemisphereLight(0x8090c0, 0x202018, 0.3); scene.add(this.hemi);
     this.world = new World(this.seed);
     const W = this.world;
     const moon = new THREE.DirectionalLight(0xa8b8ff, 0.95);
     moon.position.set(W.W / 2 + 20, 60, W.H / 2 + 10); moon.target.position.set(W.W / 2, 0, W.H / 2);
     moon.castShadow = true; moon.shadow.mapSize.set(2048, 2048);
-    Object.assign(moon.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: 140 });
+    Object.assign(moon.shadow.camera, { left: -56, right: 56, top: 56, bottom: -56, near: 1, far: 150 });
     moon.shadow.bias = -0.0015; moon.shadow.normalBias = 0.05;
     scene.add(moon, moon.target);
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; this.renderer.shadowMap.autoUpdate = false;
@@ -81,6 +82,7 @@ export class Game {
     this.bodies = new Bodies(this);
     this.wheel = new EmoteWheel(this.input);
     if (this.isHost) this.populate(o.crew.length);
+    this.tut = o.tutorial ? new Tutorial(this) : null;
     this.snapT = 0; this.stT = 0; this.hudT = 0; this.endT = null;
 
     this.hud = {
@@ -91,7 +93,7 @@ export class Game {
     };
     this.hud.root.hidden = false;
     this.toast(`${W.name} · Night ${this.night}`, 4);
-    setTimeout(() => !this.over && this.toast(this.crewSize() > 1 ? 'Grab the camcorder. Film anything weird. Get back to the van by 6 a.m.' : 'Grab the camcorder. Film anything weird. Get back to the van by 6 a.m.', 6), 4200);
+    if (!o.tutorial) setTimeout(() => !this.over && this.toast(this.crewSize() > 1 ? 'Grab the camcorder. Film anything weird. Get back to the van by 6 a.m.' : 'Grab the camcorder. Film anything weird. Get back to the van by 6 a.m.', 6), 4200);
     this.sfx.startAmbient();
     me.x = me.rx; me.z = me.rz;
   }
@@ -322,6 +324,7 @@ export class Game {
     this.items.render(dt);
     this.rain.update(dt);
     this.events.update(dt);
+    this.tut?.update(dt);
     this.viewModel(dt);
     this.voices();
     this.updateHud(dt);
@@ -476,6 +479,7 @@ export class Game {
     const c = this.camera.position;
     this.send({ t: 'drop', id: it.id, x: r2(c.x + dx * 0.6), y: r2(c.y + dy * 0.6 - 0.15), z: r2(c.z + dz * 0.6), vx: r2(dx * power + me.vx * 0.5), vy: r2(dy * power + (power > 5 ? 2.2 : 1)), vz: r2(dz * power + me.vz * 0.5) });
     if (power > 5) this.sfx.play('whoosh', null);
+    if (this.tut && power > 5 && it.kind !== 'cam') this.tut.threw = true;
     this.cam.update(0, false, false);
   }
 
@@ -696,7 +700,7 @@ export class Game {
     this.over = true;
     this.cam.dispose();
     this.things.dispose(); this.items.dispose();
-    this.rain.dispose(); this.dons.dispose(); this.wheel.dispose(); this.events.dispose();
+    this.rain.dispose(); this.dons.dispose(); this.wheel.dispose(); this.events.dispose(); this.tut?.dispose();
     this.sfx.stopAmbient();
     this.hud.root.hidden = true;
     this.hud.down.classList.remove('on');

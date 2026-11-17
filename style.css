@@ -45,6 +45,11 @@ kbd { font-family: VT323, monospace; font-size: 17px; background: rgba(255, 255,
 .tag { font-family: VT323, monospace; font-size: 24px; color: var(--amber); margin: 6px 0 16px; text-shadow: 0 2px 6px #000; }
 #title .card { margin-top: auto; margin-bottom: auto; }
 
+.micTest { display: flex; gap: 10px; align-items: center; margin: 4px 0 10px; }
+.mbar { flex: 1; height: 10px; background: rgba(255, 255, 255, .1); border-radius: 5px; overflow: hidden; }
+.mbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #4c4, #ffd84a, var(--red)); transition: width .05s; }
+.pttOnly { display: none !important; } body.ptt .pttOnly { display: flex !important; }
+#micInd.talking { color: #7f7; opacity: 1; }
 /* channel */
 #channel .card { max-height: 90vh; overflow-y: auto; }
 .chHead { display: flex; gap: 14px; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
@@ -84,6 +89,7 @@ body.filming #crosshair { display: none; }
 #stam { position: absolute; left: 50%; bottom: 10%; width: 160px; height: 5px; margin-left: -80px; background: rgba(255, 255, 255, .15); border-radius: 3px; transition: opacity .3s; }
 #stam i { display: block; height: 100%; background: #e6e2d6; border-radius: 3px; }
 #stam.tired i { background: var(--red); }
+#coach { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); max-width: min(720px, 86vw); text-align: center; font-size: 24px; background: rgba(20, 40, 80, .75); border: 1px solid #6af; border-radius: 10px; padding: 8px 16px; }
 #toast { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); font-size: 26px; text-align: center; max-width: 80vw; opacity: 0; transition: opacity .4s; }
 #toast.on { opacity: 1; }
 #vanArrow { position: absolute; left: 50%; top: 52px; transform: translateX(-50%); font-size: 24px; color: var(--amber); }
