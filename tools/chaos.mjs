@@ -8,9 +8,10 @@ const port = 8600 + Math.floor(Math.random() * 300);
 const srv = spawn(process.execPath, ['serve.js'], { cwd: root, env: { ...process.env, PORT: port }, stdio: 'ignore' });
 process.env.SH_URL = `http://localhost:${port}/`;
 await sleep(500);
-const A = await open(import.meta.url, { tag: '-host' });
-const B = await open(import.meta.url, { tag: '-friend' });
-for (const X of [A, B]) await X.send('Page.navigate', { url: X.url + '&nomic' });
+const args = ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'];
+const A = await open(import.meta.url, { args, tag: '-host' });
+const B = await open(import.meta.url, { args, tag: '-friend' });
+
 await sleep(4000);
 await A.ev(`document.getElementById('btnHost').click()`);
 let code = null;

@@ -3,6 +3,7 @@
 // everyone (host included) draws them from that (render). `s` is the state, `a` a per-kind extra.
 import * as THREE from 'three';
 import { clamp, angDiff, yawTo, rng, r2 } from './util.js';
+import { MORE, buildMore, hostMore, drawMore } from './creatures2.js';
 
 const lam = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
 
@@ -16,6 +17,7 @@ export const KINDS = {
   dancer:   { worth: 45, name: 'the dancer', act: (th) => (th.s ? 3 : 0.4) },
   applause: { worth: 120, name: 'Mr. Applause', act: (th) => [1, 1.5, 2.2, 3.2, 1.2, 4, 0][th.s] ?? 1, danger: true },
   hand:     { worth: 60, name: 'the hand', act: (th) => [1, 1.4, 2.4, 0.8, 0.6][th.s] ?? 1, danger: true },
+  ...MORE, // (append new kinds at the end: the snapshot sends the index)
 };
 export const KIND_LIST = Object.keys(KINDS);
 
@@ -58,7 +60,8 @@ const grinTex = () => faceTex((c, w, h) => {
 });
 
 // ---------- models ----------
-function build(kind) {
+function build(kind, th) {
+  if (MORE[kind]) return buildMore(kind, th);
   const g = new THREE.Group(), p = {};
   if (kind === 'chair') {
     const m = lam(0x3a2418);
@@ -272,6 +275,7 @@ export class Things {
         }
         case 'applause': this.applause(th, dt, living, near); break;
         case 'hand': this.hand(th, dt, living, near); break;
+        default: if (MORE[th.kind]) hostMore(this, th, dt, living, near); break;
       }
     }
   }
@@ -358,7 +362,10 @@ export class Things {
     if (th.kind === 'applause' && th.s !== 6 && th.s !== 5) { th.s = 4; th.t = 0; g.sound('bonk', th.x, 2.2, th.z); g.sound('laugh', th.x, 2, th.z); g.event({ k: 'struck', id: th.id }); return true; }
     if (th.kind === 'hand' && th.s !== 3) { if (th.s === 2) g.dropFromThing(th); th.s = 3; th.t = 0; g.sound('shriek', th.x, 0.4, th.z); g.event({ k: 'struck', id: th.id }); return true; }
     if (th.kind === 'balloon') { g.sound('pop', th.x, th.y, th.z); g.event({ k: 'pop', id: th.id }); this.remove(th); return true; }
-    if (th.kind === 'tv' || th.kind === 'chair' || th.kind === 'flamingo') { g.sound('bonk', th.x, 1, th.z); return false; }
+    if (th.kind === 'intern' && th.s <= 2) { th.s = 3; th.t = 0; g.sound('bonk', th.x, 1.2, th.z); g.sound('shriek', th.x, 1.2, th.z); g.event({ k: 'struck', id: th.id }); return true; }
+    if (th.kind === 'mascot' && (th.s === 1 || th.s === 2)) { th.s = 4; th.t = 0; g.sound('bonk', th.x, 1.6, th.z); g.sound('squeak', th.x, 1.6, th.z); g.event({ k: 'struck', id: th.id }); return true; }
+    if (th.kind === 'dog') return false; // it just wants to play
+    if (th.kind === 'tv' || th.kind === 'chair' || th.kind === 'flamingo' || th.kind === 'phone' || th.kind === 'bathtub' || th.kind === 'portrait') { g.sound('bonk', th.x, 1, th.z); return false; }
     return false;
   }
 
@@ -370,14 +377,14 @@ export class Things {
       let th = this.byId.get(id);
       if (!th) {
         th = { id, kind: KIND_LIST[k], x, y, z, yaw, s, a, rx: x, ry: y, rz: z, ryaw: yaw, ps: s, st: 0 };
-        th.model = build(th.kind); this.group.add(th.model);
+        th.model = build(th.kind, th); this.group.add(th.model);
         if (!this.g.isHost) { this.list.push(th); }
         this.byId.set(id, th);
       }
       if (!this.g.isHost) Object.assign(th, { x, y, z, yaw, s, a });
-      if (!th.model) { th.model = build(th.kind); this.group.add(th.model); }
+      if (!th.model) { th.model = build(th.kind, th); this.group.add(th.model); }
     }
-    for (const th of [...this.byId.values()]) if (!seen.has(th.id)) { if (th.model) this.group.remove(th.model); this.byId.delete(th.id); this.list = this.list.filter((t) => t !== th); }
+    for (const th of [...this.byId.values()]) if (!seen.has(th.id)) { if (th.model) this.group.remove(th.model); if (th.model?.userData.p?.chair) this.g.scene.remove(th.model.userData.p.chair); this.byId.delete(th.id); this.list = this.list.filter((t) => t !== th); }
   }
 
   render(dt) {
@@ -427,6 +434,7 @@ export class Things {
           break;
         }
         case 'applause': this.drawApplause(th, p, t, dt); break;
+        default: if (MORE[th.kind]) drawMore(this, th, p, t, dt); break;
         case 'hand': {
           const crawl = th.s === 1 || th.s === 2 ? 1 : th.s === 0 ? 0.4 : 0;
           p.fingers.forEach((f, i) => { f.rotation.x = Math.sin(t * 22 * crawl + i * 1.3) * 0.5 * crawl - (th.s === 3 ? 1.2 : 0) + 0.35; });

@@ -35,6 +35,14 @@ export const LINES = {
   revive: ['HE IS BACK', 'resurrection arc', 'the van has healing powers??', 'lets gooo', 'back from the dead 💀'],
   rain: ['WHY IS IT RED', 'blood rain?????', 'get inside!!', 'this is so metal', 'my screen is red', 'umbrella check'],
   donation: ['W donation', 'rich chat', 'do it do it', 'money moves'],
+  intern: ['wait how many of you are there', 'count the crew 👀', 'who is that behind you', 'thats not him', 'why isnt his light on', 'his mouth isnt moving...'],
+  exposed: ['ITS NOT HIM', 'WHAT IS THAT FACE', 'I KNEW IT', 'RUNNNN', 'impostor 💀'],
+  mascot: ['THE HOT DOG', 'why is there a hot dog', 'dont stop filming', 'it moved when you looked away', 'relish this moment'],
+  mascotFreeze: ['KEEP THE CAMERA ON IT', 'dont blink', 'it changed pose 😭', 'frozen hot dog', 'mustard man'],
+  phone: ['ANSWER IT', 'dont answer it', 'who is calling', 'its for you', 'ring ring 💀'],
+  bathtub: ['why is the water red', 'DONT LOOK IN THE TUB', 'bubbles??', 'a HAND', 'bath time 💀'],
+  portrait: ['did the painting change', 'its eyes are following you', 'the face was different before', 'where did he go'],
+  dog: ['GOOD BOY', 'ghost doggo 😭', 'can we keep him', 'throw it again', 'best anomaly ever', 'pet the dog'],
 };
 export const say = (tag, r = Math.random) => pick(r, LINES[tag] || LINES.idle);
 

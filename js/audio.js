@@ -121,6 +121,9 @@ export class Sfx {
   big() { [784, 988, 1175, 1568].forEach((f, i) => this.tone(this.master, f, 0.18, { type: 'triangle', vol: 0.09, at: i * 0.07 })); }
   click() { this.tone(this.master, 1200, 0.03, { type: 'square', vol: 0.04 }); }
   bad() { this.tone(this.master, 220, 0.3, { type: 'sawtooth', vol: 0.08, to: 110 }); }
+  ring(pos) { const d = this.at(pos, 4, 1); for (let i = 0; i < 2; i++) { this.tone(d, 1200, 0.35, { type: 'square', vol: 0.05, at: i * 0.45 }); this.tone(d, 1260, 0.35, { type: 'square', vol: 0.05, at: i * 0.45 }); } }
+  bark(pos) { const d = this.at(pos, 3, 1); this.tone(d, 520, 0.09, { type: 'sawtooth', vol: 0.1, to: 300 }); this.noise(d, 0.08, { f: 900, q: 2, vol: 0.12 }); this.tone(d, 560, 0.09, { type: 'sawtooth', vol: 0.08, to: 320, at: 0.16 }); }
+  glug(pos) { const d = this.at(pos, 2, 1.2); for (let i = 0; i < 3; i++) this.tone(d, 200 + Math.random() * 200, 0.08, { type: 'sine', vol: 0.15, to: 500, at: i * 0.1 }); }
   cash() { [1568, 2093, 2637].forEach((f, i) => this.tone(this.master, f, 0.14, { type: 'triangle', vol: 0.08, at: i * 0.06 })); this.noise(this.master, 0.12, { f: 6000, q: 2, vol: 0.05, at: 0.12 }); }
   revive(pos) { const d = this.at(pos, 4, 1); [523, 659, 784, 1046].forEach((f, i) => this.tone(d, f, 0.3, { type: 'sine', vol: 0.15, at: i * 0.1 })); this.tone(d, 80, 0.3, { vol: 0.4, to: 160 }); }
   thunder() { const p = { x: this.lp.x + (Math.random() - 0.5) * 60, y: 20, z: this.lp.z + (Math.random() - 0.5) * 60 }, d = this.at(p, 20, 0.5); this.noise(d, 2.8, { f: 140, type: 'lowpass', vol: 0.7, attack: 0.05 }); this.noise(d, 0.25, { f: 900, q: 0.5, vol: 0.25 }); }

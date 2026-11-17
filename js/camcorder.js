@@ -157,7 +157,7 @@ export class Camcorder {
     const add = (p, t) => { pts += p; tags.add(t); if (p > best) { best = p; tag = t; } };
     for (const th of g.things.byId.values()) {
       if (!(th.ry > -5)) continue;
-      const K = KINDS[th.kind], hy = th.kind === 'hand' ? 0.3 : th.kind === 'balloon' ? th.ry : th.kind === 'applause' ? 1.9 : th.kind === 'chair' ? 1.2 : 0.9;
+      const K = KINDS[th.kind], hy = K.hy ?? (th.kind === 'hand' ? 0.3 : th.kind === 'balloon' ? th.ry : th.kind === 'applause' ? 1.9 : th.kind === 'chair' ? 1.2 : 0.9);
       const f = this.visible(th.rx, hy, th.rz);
       const fr = this.fresh.get(th.id) ?? 1;
       if (f < 0) { this.fresh.set(th.id, Math.min(1, fr + 0.0018)); continue; } // ~2 minutes to be fresh again
@@ -170,6 +170,8 @@ export class Camcorder {
       let t = th.kind;
       if (th.kind === 'applause') t = th.s === 3 ? 'pose' : th.s === 2 ? 'chase' : 'applause';
       if (th.kind === 'hand' && th.s === 2) t = 'steal';
+      if (th.kind === 'intern' && th.s !== 2) { if (th.s === 5) continue; t = 'intern'; }
+      if (th.kind === 'mascot' && th.s === 2) t = 'mascotFreeze';
       add(p, t);
     }
     for (const P of g.players.values()) {
@@ -206,6 +208,7 @@ export class Camcorder {
     if (ev.k === 'steal') { const th = g.things.byId.get(ev.th); if (th) { at = [th.rx, 0.3, th.rz]; worth = 120; tag = 'steal'; } }
     if (ev.k === 'pop') { const th = g.things.byId.get(ev.id); if (th) { at = [th.rx, th.ry, th.rz]; worth = 50; tag = 'pop'; } }
     if (ev.k === 'revive') { const P = g.players.get(ev.id); if (P) { at = [ev.x, 1, ev.z]; worth = 220; tag = 'revive'; } }
+    if (ev.k === 'exposed') { const th = g.things.byId.get(ev.id); if (th) { at = [th.rx, 1.1, th.rz]; worth = 160; tag = 'exposed'; } }
     if (ev.k === 'struck') { const th = g.things.byId.get(ev.id); if (th) { at = [th.rx, 1.2, th.rz]; worth = th.kind === 'applause' ? 90 : 50; tag = 'bonk'; } }
     if (!at || this.visible(...at) < 0) return;
     const cam = this.myCam();

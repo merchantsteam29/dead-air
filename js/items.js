@@ -135,7 +135,7 @@ export class Items {
         if (ph === g.myId) { if (m.parent !== this.group) this.group.add(m); m.visible = false; it.rx = it.x; it.ry = it.y; it.rz = it.z; continue; }
         if (g.players.get(ph)?.model) { m.visible = true; if (it.kind === 'cam') m.userData.setRec(!!g.players.get(ph).aim); continue; }
       }
-      if (m.parent !== this.group) { this.group.add(m); it.rx = it.x; it.ry = it.y; it.rz = it.z; }
+      if (m.parent !== this.group) { this.group.add(m); m.scale.setScalar(1); it.rx = it.x; it.ry = it.y; it.rz = it.z; }
       m.visible = true;
       it.rx += (it.x - it.rx) * k; it.ry += (it.y - it.ry) * k; it.rz += (it.z - it.rz) * k;
       m.position.set(it.rx, it.ry, it.rz);

@@ -14,8 +14,8 @@ import { clamp, angDiff, rng, pick, shuffle, r2, fmt } from './util.js';
 
 const EYE = 1.25, WALK = 3.0, RUN = 5.3, JUMP = 4.8, GRAV = 14;
 export const NIGHT_SECS = 360;
-const PASSIVE = ['chair', 'tv', 'wardrobe', 'dancer', 'balloon', 'flamingo'];
-const BLOCKERS = { wardrobe: 0.65, tv: 0.5, dancer: 0.35, applause: 0.3 };
+const PASSIVE = ['chair', 'tv', 'wardrobe', 'dancer', 'balloon', 'flamingo', 'phone', 'bathtub', 'portrait', 'dog'];
+const BLOCKERS = { wardrobe: 0.65, tv: 0.5, dancer: 0.35, applause: 0.3, bathtub: 0.75, phone: 0.35, mascot: 0.45 };
 
 export class Game {
   constructor(o) {
@@ -113,11 +113,15 @@ export class Game {
     const rooms = shuffle(r, W.rooms.slice());
     let ri = 0;
     const nextRoom = () => rooms[ri++ % rooms.length];
-    const kinds = shuffle(r, PASSIVE.slice()).slice(0, Math.min(PASSIVE.length, 3 + this.night));
+    const kinds = shuffle(r, PASSIVE.slice()).slice(0, Math.min(7, 4 + this.night));
     for (const k of kinds) {
       if (k === 'chair' || k === 'dancer') { const rm = nextRoom(); T.spawn(k, rm.x0 + rm.w / 2 + (r() - 0.5), rm.z0 + rm.h / 2 + (r() - 0.5)); }
       if (k === 'tv' || k === 'wardrobe') { const at = this.againstWall(r, nextRoom(), k === 'wardrobe' ? 0.75 : 0.45); if (at) T.spawn(k, at.x, at.z, { yaw: at.yaw }); }
       if (k === 'balloon') { const s = W.spot(r, 'out', 14); T.spawn('balloon', s.x, s.z, { y: 1.9 }); }
+      if (k === 'phone') { const rm = nextRoom(); T.spawn('phone', rm.x0 + rm.w / 2 + (r() - 0.5) * 2, rm.z0 + rm.h / 2 + (r() - 0.5) * 2); }
+      if (k === 'bathtub') { const at = this.againstWall(r, nextRoom(), 0.5); if (at) T.spawn('bathtub', at.x, at.z, { yaw: at.yaw }); }
+      if (k === 'portrait') { const at = this.againstWall(r, nextRoom(), 0.08); if (at) T.spawn('portrait', at.x, at.z, { yaw: at.yaw }); }
+      if (k === 'dog') { const s = W.spot(r, 'out', 12); T.spawn('dog', s.x, s.z); }
       if (k === 'flamingo') { const s = W.spot(r, 'out', 16); for (let i = 0; i < 3; i++) { const p = { x: s.x + (i - 1) * 1.1, z: s.z + (i % 2) * 0.8 }; if (W.walkCell(Math.floor(p.x), Math.floor(p.z))) T.spawn('flamingo', p.x, p.z, { a: -99 }); } }
     }
     if (this.night >= 4) { const rm = nextRoom(); T.spawn('chair', rm.x0 + rm.w / 2, rm.z0 + rm.h / 2); }
@@ -126,6 +130,10 @@ export class Game {
     if (this.night >= 2) this.schedule.push({ t: 75, k: 'hand' });
     if (this.night >= 3) this.schedule.push({ t: 170, k: 'applause' });
     if (this.night >= 5) this.schedule.push({ t: 120, k: 'hand' });
+    // the mascot sleeps in a far room (half of night 1s, every night after); the Intern needs a crew to hide in
+    if (this.night >= 2 || r() < 0.5) { const rm = W.farRoom(W.van.x, W.van.z, r); T.spawn('mascot', rm.x0 + rm.w / 2, rm.z0 + rm.h / 2, { yaw: r() * 6.28 }); }
+    if (nCrew >= 2 && this.night >= 2) this.schedule.push({ t: 100, k: 'intern' });
+    if (nCrew >= 2 && this.night === 1) this.schedule.push({ t: 200, k: 'intern' });
     this.spawnR = r;
   }
 
@@ -154,6 +162,7 @@ export class Game {
       const d = Math.min(...this.living().map((P) => Math.hypot(P.x - s.x, P.z - s.z)), 99);
       if (d > bd) { bd = d; best = s; }
     }
+    if (k === 'intern') { this.things.spawn('intern', best.x, best.z, { s: 5, wake: this.time, y: -10 }); return; }
     this.things.spawn(k, best.x, best.z);
     if (k === 'applause') this.sound('jingle', best.x, 2, best.z);
   }
@@ -282,6 +291,7 @@ export class Game {
       else if (P) this.toast(`${P.name} is back!`, 3);
     }
     if (e.k === 'rain') this.rain.onEvent(e);
+    if (e.k === 'exposed') { this.toast('That is NOT one of the crew!!', 3); this.sfx.play('sting'); }
     if (e.k === 'req' || e.k === 'reqDone' || e.k === 'reqEnd') this.dons.onEvent(e);
     if (e.k === 'steal' && e.id === this.myId) this.toast('The hand took it! Get it back (throw something at it).', 4);
     if (e.k === 'left') { const P = this.players.get(e.id); if (P) { if (P.model) this.scene.remove(P.model.root); this.players.delete(e.id); this.toast(`${P.name} left.`, 3); } }
@@ -499,7 +509,7 @@ export class Game {
       const me = this.me, dx = me.x - K.rx, dz = me.z - K.rz, d = Math.hypot(dx, dz) || 1;
       this.camera.position.set(me.x + (dx / d) * 0.9, 0.45, me.z + (dz / d) * 0.9);
       this.camera.up.set(Math.sin(p.deathT) * 0.2, 1, 0);
-      this.camera.lookAt(K.rx, K.kind === 'applause' ? 2.2 : 0.4, K.rz);
+      this.camera.lookAt(K.rx, { applause: 2.2, mascot: 1.9, intern: 1.1 }[K.kind] ?? 0.4, K.rz);
       this.camera.up.set(0, 1, 0);
       this.flash.intensity = 6; this.hud.spec.hidden = true;
       this.cam.update(dt, false, false);
@@ -559,10 +569,12 @@ export class Game {
     // how close is something nasty (for the viewfinder's tearing and the red edge)
     const me = this.me;
     for (const th of this.things.byId.values()) {
-      if (th.kind !== 'applause' && th.kind !== 'hand') continue;
+      if (th.kind !== 'applause' && th.kind !== 'hand' && th.kind !== 'mascot' && th.kind !== 'intern') continue;
       if (th.ry < -5) continue;
+      if (th.kind === 'intern' && th.s !== 1 && th.s !== 2) continue; // (it's one of us... right?)
+      if (th.kind === 'mascot' && th.s === 0) continue;
       const d = Math.hypot(th.rx - me.x, th.rz - me.z);
-      danger = Math.max(danger, clamp(1 - d / (th.kind === 'applause' ? 12 : 6), 0, 1) * (th.s === 2 || th.s === 1 ? 1 : 0.4));
+      danger = Math.max(danger, clamp(1 - d / (th.kind === 'hand' ? 6 : th.kind === 'intern' ? 8 : 12), 0, 1) * (th.s === 2 || th.s === 1 ? 1 : 0.4));
     }
     this.danger = me.dead ? 0 : danger;
   }
