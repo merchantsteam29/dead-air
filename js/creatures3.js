@@ -9,6 +9,8 @@ export const MORE3 = {
   cart:       { worth: 26, name: 'the shopping cart', act: (th) => [0.5, 2.2, 3][th.s] ?? 1, hy: 0.6 },
   xray:       { worth: 32, name: 'the X-ray', act: (th) => (th.s ? 3 : 0.6), hy: 1.6 },
   chalkboard: { worth: 28, name: 'the chalkboard', act: (th) => ((th.st ?? 99) < 4 ? 3.2 : 0.8), hy: 1.6 },
+  // only exists on camera: worth a lot for a moment, then it starts taking views away (camcorder.js)
+  critic:     { worth: 85, name: 'the Critic', act: (th) => (th.s === 1 ? 1.3 : 1), hy: 1.6, onlyOnCamera: true },
 };
 // what the chalkboard writes ({n} = a crew member's name)
 export const CHALK = ['{n} IS NEXT', 'LOOK BEHIND YOU', '{n} + ME = BFFS', 'STAY AFTER CLASS {n}', 'SMILE FOR THE CAMERA', 'WHO LET THE DOG OUT', '{n} HAS DETENTION', 'I CAN SEE YOU', '7 x 6 = {n}', 'NO RUNNING IN THE HALLS', 'HELP ME', '{n} FORGOT THEIR HOMEWORK'];
@@ -53,6 +55,20 @@ export function buildMore3(kind, th) {
     p.screen.position.z = -0.045; p.screen.rotation.y = Math.PI; g.add(p.screen);
     g.position.y = 1.55;
   }
+  if (kind === 'critic') {
+    const coat = lam(0xb8a478), dark = lam(0x2a2620); // (light: it has to read through a dark viewfinder)
+    p.body = new THREE.Group(); g.add(p.body);
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.42, 1.5, 8), coat); c.position.y = 0.95; p.body.add(c);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.28, 0.2, 8), coat); collar.position.y = 1.75; p.body.add(collar);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 10), new THREE.MeshBasicMaterial({ color: 0xe8e6e0 })); head.scale.y = 1.25; head.position.y = 2.0; p.body.add(head);
+    const frown = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 4, 10, Math.PI), new THREE.MeshBasicMaterial({ color: 0x111111 })); frown.position.set(0, 1.93, -0.185); p.body.add(frown);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.03, 14), dark); brim.position.y = 2.2; p.body.add(brim);
+    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.2, 12), dark); hat.position.y = 2.32; p.body.add(hat);
+    p.arm = new THREE.Group(); p.arm.position.set(0.3, 1.6, 0); p.body.add(p.arm);
+    const a = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.6, 6), coat); a.position.y = -0.3; p.arm.add(a);
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.28, 0.02), lam(0xf4f2e8)); pad.position.set(0, -0.6, -0.1); pad.rotation.x = -0.6; p.arm.add(pad);
+    const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.16, 4), lam(0x111111)); pen.position.set(-0.4, 1.0, -0.2); pen.rotation.z = 0.8; p.body.add(pen); p.pen = pen;
+  }
   if (kind === 'chalkboard') {
     const frame = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.25, 0.06), lam(0x6a4a2a)); g.add(frame);
     p.c = canvas(512, 240);
@@ -85,6 +101,29 @@ export function hostMore3(T, th, dt, living, near) {
     th.s = on;
     return;
   }
+  if (th.kind === 'critic') {
+    // 0 lurking behind the crew, 1 being filmed (creeps at whoever films it), 2 gone (after cancelling someone)
+    if (th.s === 2) { th.y = -10; if (th.t > 30) { const s = g.world.spot(T.r, 'any', 0); Object.assign(th, { x: s.x, z: s.z, y: 0, s: 0, t: 0, path: null }); } return; }
+    const filmers = living.filter((P) => P.aim && T.sees(P, th.x, th.z, 26, 0.45)).map((P) => ({ P, d: Math.hypot(P.x - th.x, P.z - th.z) })).sort((a, b) => a.d - b.d);
+    if (filmers.length) {
+      th.s = 1;
+      const F = filmers[0];
+      T.walk(th, F.P.x, F.P.z, 1.5, dt);
+      if (F.d < 2.2) { // cancelled
+        const cam = g.items.heldBy(F.P.id), lost = cam && cam.kind === 'cam' ? Math.round(cam.tape * 0.25) : 0;
+        if (lost) cam.tape -= lost;
+        g.knockDown(F.P.id, 1.6, th.id);
+        g.event({ k: 'cancel', id: F.P.id, lost, th: th.id });
+        g.sound('shriek', th.x, 1.8, th.z);
+        th.s = 2; th.t = 0;
+      }
+      return;
+    }
+    th.s = 0;
+    // lurk behind whoever is nearest, out of the way of their camera
+    if (n0) { const tx = n0.P.x + Math.sin(n0.P.yaw) * 9, tz = n0.P.z + Math.cos(n0.P.yaw) * 9; if (g.world.walkCell(Math.floor(tx), Math.floor(tz))) T.walk(th, tx, tz, 1.1, dt); }
+    return;
+  }
   if (th.kind === 'chalkboard') {
     // writes something new now and then (a = message * 10 + whose name); s counts the messages
     th.next = th.next ?? 6 + T.r() * 6;
@@ -109,6 +148,12 @@ export function drawMore3(T, th, p, t, dt) {
     p.screen.material.map = th.s && Math.floor(t * 3) % 2 ? p.frames[1] : p.frames[0];
     p.screen.material.color.setHex(th.s ? 0xd0e8ff : 0x7f98a8);
     m.position.y = 1.55;
+  }
+  if (th.kind === 'critic') {
+    m.visible = th.y > -5 && g.cam.aiming; // you only ever see it through the camcorder
+    p.body.rotation.z = Math.sin(t * 1.3) * 0.04;
+    p.pen.rotation.z = 0.8 + Math.sin(t * 9) * 0.3; // scribbling notes
+    p.arm.rotation.x = -0.4 + Math.sin(t * 9) * 0.05;
   }
   if (th.kind === 'chalkboard') {
     m.position.y = 1.6;

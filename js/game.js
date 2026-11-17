@@ -114,7 +114,7 @@ export class Game {
     for (let i = 0; i < cams; i++) I.add('cam', W.van.x + 1.7 + i * 0.7, W.van.z + 3.3);
     // junk
     const junk = W.T.props ? [...BASIC_PROPS, ...W.T.props, ...W.T.props, ...W.T.props] : BASIC_PROPS;
-    for (let i = 0; i < 30; i++) { const s = W.spot(r, 'any', 6); I.add(pick(r, junk), s.x, s.z); }
+    for (let i = 0; i < 30; i++) { const s = W.spot(r, 'any', 6); const it = I.add(pick(r, junk), s.x, s.z); if (i < Math.min(6, 2 + this.night)) it.haunt = true; } // the first few are possessed
     // the weird stuff: different rooms
     const rooms = shuffle(r, W.rooms.slice());
     let ri = 0;
@@ -142,6 +142,7 @@ export class Game {
     if (this.night >= 2) this.schedule.push({ t: 75, k: 'hand' });
     if (this.night >= 3) this.schedule.push({ t: 170, k: 'applause' });
     if (this.night >= 5) this.schedule.push({ t: 120, k: 'hand' });
+    if (this.night >= 2 || r() < 0.5) this.schedule.push({ t: 80 + r() * 60, k: 'critic' });
     // the mascot sleeps in a far room (half of night 1s, every night after); the Intern needs a crew to hide in
     if (this.night >= 2 || r() < 0.5) { const rm = W.farRoom(W.van.x, W.van.z, r); T.spawn('mascot', rm.x0 + rm.w / 2, rm.z0 + rm.h / 2, { yaw: r() * 6.28 }); }
     if (nCrew >= 2 && this.night >= 2) this.schedule.push({ t: 100, k: 'intern' });
@@ -242,7 +243,7 @@ export class Game {
       case 'drop': { const it = this.items.release(P, m); if (it && Math.hypot(m.vx || 0, m.vz || 0) > 5) this.sound('whoosh', P.x, 1.3, P.z); break; }
       case 'film': {
         const it = this.items.byId.get(m.id);
-        if (it && it.kind === 'cam' && it.holder === from) { it.tape += clamp(+m.p || 0, 0, 1500); it.batt = clamp(+m.b, 0, 100); }
+        if (it && it.kind === 'cam' && it.holder === from) { it.tape = Math.max(0, it.tape + clamp(+m.p || 0, -300, 1500)); it.batt = clamp(+m.b, 0, 100); } // (negative: the Critic)
         break;
       }
       case 'leave': if (!this.over && this.time > 20 && this.everyoneIn()) this.end('leave'); break;
@@ -303,6 +304,7 @@ export class Game {
       else if (P) this.toast(`${P.name} is back!`, 3);
     }
     if (e.k === 'rain') this.rain.onEvent(e);
+    if (e.k === 'cancel') { if (e.id === this.myId) { this.toast(`The Critic CANCELLED you. -${fmt(e.lost)} views.`, 4); this.sfx.play('bad'); } else this.toast(`${this.players.get(e.id)?.name || 'Someone'} got cancelled by the Critic.`, 3); }
     if (e.k === 'exposed') { this.toast('That is NOT one of the crew!!', 3); this.sfx.play('sting'); }
     if (e.k === 'req' || e.k === 'reqDone' || e.k === 'reqEnd') this.dons.onEvent(e);
     if (e.k === 'steal' && e.id === this.myId) this.toast('The hand took it! Get it back (throw something at it).', 4);

@@ -6,6 +6,12 @@ import { PROP_KINDS, makeProp, propRadius } from './models.js';
 import { rng, r2, clamp } from './util.js';
 
 export const ITEM_KINDS = ['cam', ...PROP_KINDS];
+// the purple glow round a possessed thing (one texture, a material per thing so they flicker apart)
+let auraTex = null;
+const AURA = () => {
+  if (!auraTex) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const gr = x.createRadialGradient(32, 32, 2, 32, 32, 32); gr.addColorStop(0, 'rgba(200,120,255,0.9)'); gr.addColorStop(1, 'rgba(120,40,200,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); auraTex = new THREE.CanvasTexture(c); }
+  return new THREE.SpriteMaterial({ map: auraTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.2 });
+};
 const G = 18;
 
 export class Items {
@@ -41,6 +47,8 @@ export class Items {
         continue;
       }
       const r = propRadius(it.kind);
+      // possessed junk floats after people and throws itself at them
+      if (it.haunt && this.haunted(it, dt, living, r)) continue;
       // players shove things lying on the floor
       for (const P of living) {
         if (P.y > 0.5) continue;
@@ -92,6 +100,32 @@ export class Items {
     }
   }
 
+  // hs: 0 asleep (an ordinary thing until someone comes within 6 m), 1 floating after the nearest person,
+  // 2 flying at them (ordinary physics, so it bonks), 3 lying there for a few seconds. Returns true while it floats.
+  haunted(it, dt, living, r) {
+    const g = this.g;
+    let P = null, d = 99;
+    for (const Q of living) { const e = Math.hypot(Q.x - it.x, Q.z - it.z); if (e < d) { d = e; P = Q; } }
+    if (!it.hs) { if (P && d < 6) { it.hs = 1; it.ht = 2 + this.r() * 3; g.sound('giggle', it.x, it.y, it.z); } return false; }
+    if (it.hs === 2) { if (it.rest || (it.y <= r + 0.02 && Math.hypot(it.vx, it.vz) < 0.5)) { it.hs = 3; it.ht = 4; } return false; }
+    if (it.hs === 3) { it.ht -= dt; if (it.ht <= 0) it.hs = 1; return false; }
+    if (!P || d > 22) { it.hs = 3; it.ht = 3; it.rest = false; return false; }
+    // drift to a spot 2 m from them, bobbing
+    const tx = P.x + ((it.x - P.x) / (d || 1)) * 2, tz = P.z + ((it.z - P.z) / (d || 1)) * 2, mx = tx - it.x, mz = tz - it.z, md = Math.hypot(mx, mz);
+    if (md > 0.05) { const st = Math.min(md, 2.4 * dt); it.x += (mx / md) * st; it.z += (mz / md) * st; }
+    const p = { x: it.x, z: it.z }; g.world.collide(p, r); it.x = p.x; it.z = p.z;
+    it.y += (1.3 + Math.sin(g.time * 3 + it.id) * 0.2 - it.y) * Math.min(1, dt * 3);
+    it.yaw += dt * 2; it.vx = it.vy = it.vz = 0; it.rest = false;
+    it.ht -= dt;
+    if (it.ht <= 0) { // throw itself at them
+      const ex = P.x - it.x, ey = P.y + 1.1 - it.y, ez = P.z - it.z, el = Math.hypot(ex, ey, ez) || 1;
+      Object.assign(it, { vx: (ex / el) * 11, vy: (ey / el) * 11 + 1.5, vz: (ez / el) * 11, hs: 2, ht: 6 + this.r() * 4, thrower: null, spin: 14 });
+      g.sound('whoosh', it.x, it.y, it.z);
+      return false;
+    }
+    return true;
+  }
+
   // Host: P picks up item id. Returns true if they got it.
   grab(P, id) {
     const it = this.byId.get(id);
@@ -107,18 +141,20 @@ export class Items {
     it.holder = '';
     let x = m.x ?? P.x, z = m.z ?? P.z;
     if (this.g.world.solidCell(Math.floor(x), Math.floor(z)) || !this.g.world.los(P.x, P.z, x, z)) { x = P.x; z = P.z; }
+    if (it.haunt) { it.hs = 2; it.ht = 6; } // it lands, sulks, then floats up again
     Object.assign(it, { x, z, y: clamp(m.y ?? P.y + 1.2, 0.2, 3), vx: m.vx || 0, vy: m.vy || 0, vz: m.vz || 0, spin: (this.r() - 0.5) * 12, rest: false, thrower: P.id, throwT: this.g.time });
     return it;
   }
 
-  snap() { return this.list.map((i) => [i.id, ITEM_KINDS.indexOf(i.kind), r2(i.x), r2(i.y), r2(i.z), r2(i.yaw), i.holder, Math.round(i.batt), Math.round(i.tape)]); }
+  snap() { return this.list.map((i) => [i.id, ITEM_KINDS.indexOf(i.kind), r2(i.x), r2(i.y), r2(i.z), r2(i.yaw), i.holder, Math.round(i.batt), Math.round(i.tape), i.haunt ? (i.hs || 0) + 1 : 0]); }
 
   // ---- everyone ----
   applySnap(arr) {
-    for (const [id, k, x, y, z, yaw, holder, batt, tape] of arr) {
+    for (const [id, k, x, y, z, yaw, holder, batt, tape, h] of arr) {
       let it = this.byId.get(id);
       if (!it) { it = { id, kind: ITEM_KINDS[k], x, y, z, yaw, holder, batt, tape }; if (!this.g.isHost) this.list.push(it); this.byId.set(id, it); }
       // the battery of the camcorder in my hands runs down here; the host's number lags a second behind
+      it.h = h || 0; // haunted: 1 asleep, 2 floating, 3 flying, 4 resting
       if (!this.g.isHost) Object.assign(it, { x, y, z, yaw, holder, batt: holder === this.g.myId && it.holder === holder ? Math.min(it.batt, batt) : batt, tape });
       if (!it.model) { it.model = makeProp(it.kind); it.rx = x; it.ry = y; it.rz = z; it.ryaw = yaw; this.group.add(it.model); }
     }
@@ -141,6 +177,8 @@ export class Items {
       m.position.set(it.rx, it.ry, it.rz);
       m.rotation.set(0, it.yaw, Math.abs(it.y - (it.ry ?? 0)) > 0.05 ? Math.sin(t * 9) * 0.6 : 0);
       if (it.kind === 'cam') m.userData.setRec(false);
+      if (it.h && !m.userData.aura) { const a = new THREE.Sprite(AURA()); a.scale.setScalar(1.1); m.add(a); m.userData.aura = a; }
+      if (m.userData.aura) { m.userData.aura.material.opacity = it.h === 2 || it.h === 3 ? 0.55 + Math.sin(t * 8) * 0.15 : 0.12; if (it.h === 2) m.rotation.set(Math.sin(t * 5 + it.id) * 0.4, it.yaw, Math.cos(t * 4) * 0.4); }
     }
   }
 

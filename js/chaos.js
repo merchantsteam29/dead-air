@@ -84,7 +84,7 @@ const SAY = {
   chair: 'film the floating chair up close!!', tv: 'get the TV face on camera', flamingo: 'film the flamingos. closer.', wardrobe: 'film the wardrobe OPEN',
   balloon: 'film the balloon!!', dancer: 'film her dancing pls', applause: 'get mr applause on camera (stay safe lol)', hand: 'film the hand, it creeps me out',
   scream: 'make someone SCREAM on camera', fall: 'film someone falling over 😭', bonk: 'hit a monster with something', dance: 'film someone dancing',
-  narrate: 'talk to chat for a bit', cart: 'film the cart that drives itself', xray: 'film the x-ray waving', chalkboard: 'film the chalkboard writing', intern: 'film the extra crew member', mascot: 'film the hot dog guy', phone: 'film the phone ringing', bathtub: 'film the bathtub', portrait: 'film the creepy painting', dog: 'film the ghost dog!!', nv: 'use night vision for a bit', rain: 'film the blood rain', revive: 'film a revive at the van',
+  narrate: 'talk to chat for a bit', haunted: 'film the floating junk', critic: 'film the guy in the coat (only for a sec)', cart: 'film the cart that drives itself', xray: 'film the x-ray waving', chalkboard: 'film the chalkboard writing', intern: 'film the extra crew member', mascot: 'film the hot dog guy', phone: 'film the phone ringing', bathtub: 'film the bathtub', portrait: 'film the creepy painting', dog: 'film the ghost dog!!', nv: 'use night vision for a bit', rain: 'film the blood rain', revive: 'film a revive at the van',
 };
 export class Donations {
   constructor(g) {

@@ -167,6 +167,10 @@ export class Camcorder {
       if (f < 0) { this.fresh.set(th.id, Math.min(1, fr + 0.0018)); continue; } // ~2 minutes to be fresh again
       const d = Math.hypot(th.rx - c.x, th.rz - c.z);
       seen.push({ kind: th.kind, d });
+      if (th.kind === 'critic') { // a couple of seconds of it are gold; after that it costs you
+        this.critT = (this.critT || 0) + 0.2;
+        if (this.critT > 2.4) { add(0.0001, 'critic'); pts -= 30 * 0.2 * (1 + Math.min(2, (this.critT - 2.4) / 3)); if (Math.random() < 0.3) this.pop('-' + Math.round(6 * (1 + (this.critT - 2.4) / 3)), false); continue; }
+      }
       const near = clamp(1.5 - d / 14, 0.25, 1.3), frame = 1 - f * 0.55;
       const glows = th.kind === 'tv' && th.s || th.kind === 'balloon' || th.kind === 'applause' && (th.s === 3 || th.s === 5);
       const p = K.worth * K.act(th, g.time) * frame * near * this.lit(th.rx, th.rz, glows) * fr * 0.2;
@@ -177,6 +181,16 @@ export class Camcorder {
       if (th.kind === 'intern' && th.s !== 2) { if (th.s === 5) continue; t = 'intern'; }
       if (th.kind === 'mascot' && th.s === 2) t = 'mascotFreeze';
       add(p, t);
+    }
+    if (![...g.things.byId.values()].some((th) => th.kind === 'critic' && th.ry > -5 && this.visible(th.rx, 1.6, th.rz) >= 0)) this.critT = 0;
+    // possessed junk
+    for (const it of g.items.byId.values()) {
+      if (!it.h || it.h === 1 || it.holder) continue;
+      const f = this.visible(it.rx, it.ry, it.rz); if (f < 0) continue;
+      const fr = this.fresh.get('i' + it.id) ?? 1;
+      const p = 22 * (it.h === 3 ? 2.5 : it.h === 2 ? 1.3 : 0.5) * (1 - f * 0.5) * clamp(1.5 - Math.hypot(it.rx - c.x, it.rz - c.z) / 14, 0.25, 1.3) * fr * 0.2;
+      this.fresh.set('i' + it.id, Math.max(0.15, fr - 0.02));
+      add(p, 'haunted'); seen.push({ kind: 'haunted', d: 0 });
     }
     for (const P of g.players.values()) {
       if (P.id === g.myId) continue;
@@ -202,6 +216,7 @@ export class Camcorder {
     if (tag) { this.lastTag = tag; this.frameTags.add(tag); }
     this.pending += pts; this.framePts += pts;
     if (pts > 6) this.pop(`+${Math.round(pts)}`, false);
+    if (tag === 'critic' && Math.random() < 0.25) this.addChat(say('critic'));
   }
 
   // A one-off moment (the host's events): worth a lot if it happens in frame.
@@ -213,6 +228,7 @@ export class Camcorder {
     if (ev.k === 'down') { const P = g.players.get(ev.id); if (P && ev.id !== g.myId) { at = [P.x, P.y + 0.8, P.z]; worth = 45; tag = String(ev.by).startsWith('p:') ? 'bonk' : 'fall'; } }
     if (ev.k === 'steal') { const th = g.things.byId.get(ev.th); if (th) { at = [th.rx, 0.3, th.rz]; worth = 120; tag = 'steal'; } }
     if (ev.k === 'pop') { const th = g.things.byId.get(ev.id); if (th) { at = [th.rx, th.ry, th.rz]; worth = 50; tag = 'pop'; } }
+    if (ev.k === 'cancel' && ev.id !== g.myId) { const P = g.players.get(ev.id); if (P) { at = [P.x, 1, P.z]; worth = 160; tag = 'cancel'; } }
     if (ev.k === 'revive') { const P = g.players.get(ev.id); if (P) { at = [ev.x, 1, ev.z]; worth = 220; tag = 'revive'; } }
     if (ev.k === 'exposed') { const th = g.things.byId.get(ev.id); if (th) { at = [th.rx, 1.1, th.rz]; worth = 160; tag = 'exposed'; } }
     if (ev.k === 'struck') { const th = g.things.byId.get(ev.id); if (th) { at = [th.rx, 1.2, th.rz]; worth = th.kind === 'applause' ? 90 : 50; tag = 'bonk'; } }
