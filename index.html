@@ -43,7 +43,7 @@
     <button id="btnQuick" class="big quickBtn">Quick Play <small>(join strangers)</small></button>
     <div class="joinRow"><input id="joinCode" maxlength="4" placeholder="CODE" autocomplete="off"><button id="btnJoin">Join a crew</button></div>
     <p id="joinHint" class="hint" hidden>You were invited! Press Join a crew.</p>
-    <div class="small"><button id="btnChannel">Your channel</button><button id="btnHow">How to play</button><button id="btnSettings">Settings</button><button id="installApp" style="display:none">Install app</button><button id="pcDownload">Download for PC</button></div>
+    <div class="small"><button id="btnEndless">Endless night (alone)</button><button id="btnChannel">Your channel</button><button id="btnHow">How to play</button><button id="btnSettings">Settings</button><button id="installApp" style="display:none">Install app</button><button id="pcDownload">Download for PC</button></div>
     <p id="bestLine" class="hint"></p>
   </div>
   <p class="foot">Use headphones. The game uses your microphone: things out there can hear you.</p>
@@ -60,6 +60,8 @@
     <ul id="lobbyList"></ul>
     <div class="row">Your look <div id="lookPick2" class="look"></div></div>
     <div class="row">Role <div id="rolePick2" class="look"></div></div>
+    <div class="row" id="modeRow">Mode <select id="modePick"><option value="season">Seasons</option><option value="endless">Endless night</option><option value="monster">Play as the monster</option></select></div>
+    <p id="modeNote" class="hint"></p>
     <button id="btnStart" class="big">Start night</button>
     <button id="btnLeaveLobby">Leave</button>
   </div>
@@ -79,6 +81,7 @@
       <li><b>Donations</b> pop up: viewers pay you to film something. First camcorder to do it gets the bonus.</li>
       <li><b>The van's kit</b> (free every night): two walkie-talkies (talk across the map; monsters hear the static), an EMF meter (beeps near weird stuff), a flash camera (3 shots, stuns what's in front), a spare battery (click next to a camcorder).</li>
       <li><b>Roles:</b> Camera op (battery lasts longer), Host (talking on camera pays 3x), Runner (more stamina, faster), Tech (a built-in EMF meter, sees the Critic up close). <b>The van</b> gets fancier as your channel grows, with a small perk at each level.</li>
+      <li><b>Modes:</b> Endless night (one night, the network checks your views every 3 minutes, more monsters each time) and Play as the monster (online: one friend is Mr. Applause, finding you by your voices).</li>
       <li><b>Places:</b> lots, malls, hospitals and schools, each with something weird of its own. <b>Night events:</b> fog, storms, power cuts, blood moons (double views) and blood rain.</li>
       <li><b>Blood rain</b> drains your stamina and battery outside. Get under a roof, or film it for double views.</li>
       <li>Your friends' screams, falls and arguments on camera count too, and the best 8 seconds of every tape go in the upload, with sound.</li>

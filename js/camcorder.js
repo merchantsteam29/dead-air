@@ -193,7 +193,7 @@ export class Camcorder {
       add(p, 'haunted'); seen.push({ kind: 'haunted', d: 0 });
     }
     for (const P of g.players.values()) {
-      if (P.id === g.myId) continue;
+      if (P.id === g.myId || P.monster) continue;
       const f = this.visible(P.x, P.y + 1, P.z);
       if (f < 0) continue;
       const d = Math.hypot(P.x - c.x, P.z - c.z);

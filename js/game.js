@@ -29,6 +29,8 @@ export class Game {
     this.myId = o.myId;
     this.seed = o.seed; this.night = o.night; this.season = o.season; this.quota = o.quota; this.seasonViews = o.seasonViews || 0; this.nightOf = o.nightOf || 3;
     this.onEnd = o.onEnd || (() => {});
+    // modes: 'season' (the usual), 'endless' (one night, a view check every 3 minutes), 'monster' (o.monster plays Mr. Applause)
+    this.mode = o.mode || 'season'; this.monsterId = o.monster || null; this.checks = 0; this.nextCheck = 180; this.caught = 0;
     this.time = 0; this.left = NIGHT_SECS; this.over = false; this.danger = 0; this.nightViews = 0;
 
     // scene and light: a moon with a (static) shadow so the insides of buildings are dark, plus everyone's headlamp
@@ -71,7 +73,8 @@ export class Game {
       const P = { id: c.id, name: c.name, color: c.color, hat: c.hat, x: W.van.x + (i % 2 ? 2.4 : -2.4), y: 0, z: W.van.z - 2 + Math.floor(i / 2) * 1.6, yaw: 0, pitch: 0, vx: 0, vz: 0, v: 0, aim: false, flash: true, run: false, wave: false, nv: false, down: false, dead: false, downUntil: 0, emote: null, carrier: null, carrying: null };
       P.rx = P.x; P.rz = P.z; P.ry = 0; P.ryaw = 0; P.stepD = 0; P.slot = -1;
       P.role = c.role || 'camop';
-      if (c.id !== this.myId) { P.model = new Crew(c.color, c.hat, c.outfit, c.acc); scene.add(P.model.root); P.slot = this.players.size - (this.players.has(this.myId) ? 1 : 0); }
+      P.monster = c.id === this.monsterId;
+      if (c.id !== this.myId && !P.monster) { P.model = new Crew(c.color, c.hat, c.outfit, c.acc); scene.add(P.model.root); P.slot = this.players.size - (this.players.has(this.myId) ? 1 : 0); }
       this.players.set(c.id, P);
     });
     let slot = 0; for (const P of this.players.values()) if (P.id !== this.myId) P.slot = slot++;
@@ -89,6 +92,14 @@ export class Game {
     this.bodies = new Bodies(this);
     this.wheel = new EmoteWheel(this.input);
     if (this.isHost) this.populate(o.crew.length);
+    if (this.isHost && this.monsterId) { // a friend is Mr. Applause: he starts in a far room
+      const rm = W.farRoom(W.van.x, W.van.z, rng(this.seed)), P = this.players.get(this.monsterId);
+      const th = this.things.spawn('applause', rm.x0 + rm.w / 2, rm.z0 + rm.h / 2, { ctrl: this.monsterId, a: 1 + [...this.players.keys()].indexOf(this.monsterId) });
+      if (P) { P.x = P.rx = th.x; P.z = P.rz = th.z; }
+    }
+    if (this.mode === 'endless') this.left = 9999;
+    this.isMonster = this.me.monster;
+    if (this.isMonster) this.setupMonster();
     this.tut = o.tutorial ? new Tutorial(this) : null;
     this.snapT = 0; this.stT = 0; this.hudT = 0; this.endT = null;
 
@@ -100,13 +111,13 @@ export class Game {
     };
     this.hud.root.hidden = false;
     this.toast(`${W.name} · Night ${this.night}`, 4);
-    if (!o.tutorial) setTimeout(() => !this.over && this.toast(this.crewSize() > 1 ? 'Grab the camcorder. Film anything weird. Get back to the van by 6 a.m.' : 'Grab the camcorder. Film anything weird. Get back to the van by 6 a.m.', 6), 4200);
+    if (!o.tutorial && o.monster !== this.myId) setTimeout(() => !this.over && this.toast(this.crewSize() > 1 ? 'Grab the camcorder. Film anything weird. Get back to the van by 6 a.m.' : 'Grab the camcorder. Film anything weird. Get back to the van by 6 a.m.', 6), 4200);
     this.sfx.startAmbient();
     me.x = me.rx; me.z = me.rz;
   }
 
   crewSize() { return this.players.size; }
-  living() { return [...this.players.values()].filter((P) => !P.dead); }
+  living() { return [...this.players.values()].filter((P) => !P.dead && !P.monster); } // (the monster player isn't prey)
   stamp() { return `NIGHT ${this.night}  ${this.clock()}`; }
   clock() {
     const m = Math.floor((this.time / NIGHT_SECS) * 360), h = Math.floor(m / 60), mm = String(m % 60).padStart(2, '0');
@@ -150,7 +161,7 @@ export class Game {
     }
     if (this.night >= 4) { const rm = nextRoom(); T.spawn('chair', rm.x0 + rm.w / 2, rm.z0 + rm.h / 2); }
     // the dangerous ones arrive later
-    this.schedule = [{ t: this.night === 1 ? 45 : 30, k: 'applause' }];
+    this.schedule = this.monsterId ? [] : [{ t: this.night === 1 ? 45 : 30, k: 'applause' }];
     if (this.night >= 2) this.schedule.push({ t: 75, k: 'hand' });
     if (this.night >= 3) this.schedule.push({ t: 170, k: 'applause' });
     if (this.night >= 5) this.schedule.push({ t: 120, k: 'hand' });
@@ -253,6 +264,7 @@ export class Game {
       case 'bodyDrop': this.bodies.hostDrop(P, m); break;
       case 'don': this.dons.hostClaim(P, m); break;
       case 'use': this.hostUse(P, m.id); break;
+      case 'bite': case 'bow': if (P.monster) this.hostMonster(P, m); break;
       case 'drop': { const it = this.items.release(P, m); if (it && Math.hypot(m.vx || 0, m.vz || 0) > 5) this.sound('whoosh', P.x, 1.3, P.z); break; }
       case 'film': {
         const it = this.items.byId.get(m.id);
@@ -294,6 +306,62 @@ export class Game {
     }
   }
 
+  endlessNeed(k) { const base = 700 + 350 * (this.crewSize() - (this.monsterId ? 2 : 1)); return Math.round((base * k * (1 + 0.2 * (k - 1))) / 100) * 100; }
+
+  // ---------- playing Mr. Applause ----------
+  monsterThing() { for (const th of this.things.byId.values()) if (th.kind === 'applause' && th.a === 1 + [...this.players.keys()].indexOf(this.myId)) return th; return null; }
+  setupMonster() {
+    this.p.flash = false;
+    this.events.hemiBase = 1.1; this.scene.fog.density *= 0.5; // he sees in the dark
+    document.body.classList.add('monster');
+    this.rings = [0, 1, 2, 3].map(() => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTex(), color: 0xff3030, transparent: true, depthTest: false, depthWrite: false, opacity: 0 })); s.renderOrder = 10; this.scene.add(s); return s; });
+    setTimeout(() => !this.over && this.toast('You are MR. APPLAUSE. Find them by their voices (red rings), grab them (click). Right click: take a bow.', 7), 300); // (the HUD isn't set up yet)
+  }
+  // host: the monster player bites or bows
+  hostMonster(P, m) {
+    const th = [...this.things.list].find((t) => t.ctrl === P.id);
+    if (!th || th.s === 3 || th.s === 4 || th.s === 5) return;
+    if (m.t === 'bow') { th.s = 3; th.t = 0; this.sound('ding', th.x, 2, th.z); this.sound('laugh', th.x, 2, th.z); return; }
+    const prey = this.living().map((Q) => ({ Q, d: Math.hypot(Q.x - th.x, Q.z - th.z) })).filter((o) => o.d < 1.5 && Math.abs(angDiff(th.yaw, Math.atan2(-(o.Q.x - th.x), -(o.Q.z - th.z)))) < 1.3).sort((a, b) => a.d - b.d)[0];
+    if (!prey) { this.sound('whoosh', th.x, 1.5, th.z); return; }
+    th.s = 5; th.t = 0; this.caught++;
+    this.kill(prey.Q.id, th.id); this.sound('applause', th.x, 1.5, th.z, 1.4); this.sound('laugh', th.x, 2, th.z);
+  }
+  monsterControls(dt) {
+    const I = this.input, me = this.me, p = this.p, pad = I.pad, W = this.world;
+    const th = this.monsterThing();
+    const frozen = th && (th.s === 3 || th.s === 4 || th.s === 5);
+    if (frozen) { me.x = th.x; me.z = th.z; me.vx = me.vz = 0; }
+    else {
+      const k = (c) => I.down(c);
+      let mx = (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0) + (pad ? pad.mx : 0), mz = (k('KeyW') ? 1 : 0) - (k('KeyS') ? 1 : 0) + (pad ? pad.mz : 0);
+      const l = Math.hypot(mx, mz); if (l > 1) { mx /= l; mz /= l; }
+      const run = (k('ShiftLeft') || (pad && pad.sprint)) && p.stam > 0 && !p.tired && mz > 0.3;
+      p.stam = clamp(p.stam + (run ? -25 : 12) * dt, 0, 100); if (p.stam <= 0) p.tired = true; if (p.tired && p.stam > 35) p.tired = false;
+      const sp = (run ? 4.4 : 3.1) * (this.events.speedK || 1);
+      const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
+      me.vx = (rx * mx + fx * mz) * sp; me.vz = (rz * mx + fz * mz) * sp;
+      const pos = { x: me.x + me.vx * dt, z: me.z + me.vz * dt }; W.collide(pos, 0.35); me.x = pos.x; me.z = pos.z;
+      me.run = run && l > 0.3;
+      if (I.lmbHit || (pad && pad.throw)) this.send({ t: 'bite' });
+      if ((I.rmb && !this.rmbWas) || (pad && pad.nv)) this.send({ t: 'bow' });
+    }
+    this.rmbWas = I.rmb;
+    me.flash = false; me.aim = false; me.radio = false;
+    this.camera.position.set(me.x, 2.15, me.z);
+    this.camera.rotation.set(me.pitch, me.yaw, 0);
+    this.flash.intensity = 0;
+    this.sfx.setListener(me.x, 2.15, me.z, me.yaw);
+    // voices and running show up as red rings, through walls
+    const loud = [...this.players.values()].filter((P) => !P.dead && !P.monster && (P.v > 0.08 || P.run)).slice(0, this.rings.length);
+    this.rings.forEach((s, i) => {
+      const P = loud[i];
+      s.material.opacity = P ? 0.85 : 0;
+      if (P) { s.position.set(P.rx, 1.2, P.rz); s.scale.setScalar(1.4 + Math.sin(performance.now() / 120) * 0.3 + Math.min(1, P.v * 3)); }
+    });
+    this.hud.stam.style.opacity = p.stam < 99 ? 1 : 0; this.hud.stamBar.style.width = p.stam + '%';
+  }
+
   everyoneIn() { const L = this.living(); return L.length > 0 && L.every((P) => this.world.inVan(P.x, P.z)); }
 
   dropPlayer(id) {
@@ -313,6 +381,7 @@ export class Game {
 
   applySnap(m) {
     if (!this.isHost) this.left = m.l;
+    if (m.e) { this.nextCheck = m.e[0]; this.needNext = m.e[1]; }
     for (const [id, x, y, z, yaw, pitch, f, v, dn, dd, e, car, cing] of m.p) {
       const P = this.players.get(id);
       if (!P) continue;
@@ -346,6 +415,7 @@ export class Game {
       else if (P) this.toast(`${P.name} is back!`, 3);
     }
     if (e.k === 'rain') this.rain.onEvent(e);
+    if (e.k === 'check') { if (e.ok) { this.toast(`The network checked in: ${fmt(e.have)} / ${fmt(e.need)} views. Keep going! Next check needs ${fmt(e.next)}. Something else just arrived...`, 6); this.sfx.play('big'); } else { this.toast(`The network checked in: ${fmt(e.have)} / ${fmt(e.need)} views. CHANNEL CANCELLED.`, 6); this.sfx.play('bad'); } }
     if (e.k === 'flashed') { this.sfx.play('camflash', { x: e.x, y: 1.5, z: e.z }); if (e.id === this.myId) { const f = document.getElementById('flashFx'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); } }
     if (e.k === 'charged') { const c = this.items.byId.get(e.cam); if (c) c.batt = e.b; if (e.by === this.myId || c?.holder === this.myId) this.toast(`Camcorder battery ${e.b}%`, 2); this.sfx.play('views'); }
     if (e.k === 'cancel') { if (e.id === this.myId) { this.toast(`The Critic CANCELLED you. -${fmt(e.lost)} views.`, 4); this.sfx.play('bad'); } else this.toast(`${this.players.get(e.id)?.name || 'Someone'} got cancelled by the Critic.`, 3); }
@@ -377,7 +447,16 @@ export class Game {
   }
 
   hostTick(dt) {
-    this.left -= dt;
+    if (this.mode !== 'endless') this.left -= dt;
+    else if (this.time >= this.nextCheck) { // the network checks in
+      this.checks++;
+      const need = this.endlessNeed(this.checks), have = Math.round(this.items.list.reduce((s, i) => s + (i.kind === 'cam' ? i.tape : 0), 0));
+      if (have < need) { this.event({ k: 'check', ok: 0, need, have }); this.end('cancelled'); return; }
+      this.event({ k: 'check', ok: 1, need, have, n: this.checks, next: this.endlessNeed(this.checks + 1) });
+      const more = ['applause', 'hand', 'critic', 'mascot', ...(this.crewSize() > 1 ? ['intern'] : [])];
+      this.spawnHostile(more[(this.checks - 1) % more.length]);
+      this.nextCheck += 180;
+    }
     while (this.schedule.length && this.time >= this.schedule[0].t) this.spawnHostile(this.schedule.shift().k);
     this.schedule.sort((a, b) => a.t - b.t);
     for (const P of this.players.values()) {
@@ -393,13 +472,13 @@ export class Game {
     this.bodies.hostTick(dt);
     this.rain.hostTick(dt);
     this.dons.hostTick(dt);
-    if (this.left <= 0) this.end('time');
+    if (this.left <= 0 && this.mode !== 'endless') this.end('time');
     else if (!this.living().length) { this.endT = (this.endT ?? 4) - dt; if (this.endT <= 0) this.end('dead'); }
     this.snapT -= dt;
     if (this.snapT <= 0) {
       this.snapT = 1 / 15;
       const p = [...this.players.values()].map((P) => [P.id, r2(P.x), r2(P.y), r2(P.z), r2(P.yaw), r2(P.pitch), this.flagsOut(P), r2(P.v), P.down ? 1 : 0, P.dead ? 1 : 0, EMOTES.indexOf(P.emote) + 1, P.carrier || '', P.carrying || '']);
-      this.broadcast({ t: 'snap', l: Math.round(this.left * 10) / 10, r: this.rain.snapOut(), p, th: this.things.snap(), it: this.items.snap() });
+      this.broadcast({ t: 'snap', l: Math.round(this.left * 10) / 10, r: this.rain.snapOut(), e: this.mode === 'endless' ? [Math.round(this.nextCheck), this.endlessNeed(this.checks + 1)] : undefined, p, th: this.things.snap(), it: this.items.snap() });
     }
   }
 
@@ -418,6 +497,7 @@ export class Game {
       views: cams.filter((c) => c.saved).reduce((s, c) => s + c.tape, 0),
       lost: cams.filter((c) => !c.saved).reduce((s, c) => s + c.tape, 0),
       cams, survivors: this.living().map((P) => P.id), dead: [...this.players.values()].filter((P) => P.dead).map((P) => P.id),
+      mode: this.mode, time: Math.round(this.time), checks: reason === 'cancelled' ? this.checks - 1 : this.checks, monster: this.monsterId ? { id: this.monsterId, caught: this.caught } : null,
     };
     this.broadcast(msg);
   }
@@ -438,6 +518,7 @@ export class Game {
     me.v = this.micLevel();
     if (this.over) return;
     if (me.dead) { this.spectate(dt); return; }
+    if (this.isMonster) { this.monsterControls(dt); return; }
     // knocked down
     if (p.downT > 0) {
       p.downT -= dt;
@@ -628,7 +709,7 @@ export class Game {
     const k = 1 - Math.exp(-dt * 14);
     let danger = 0;
     for (const P of this.players.values()) {
-      if (P.id === this.myId) continue;
+      if (P.id === this.myId || P.monster) continue;
       const ox = P.rx, oz = P.rz;
       P.rx += (P.x - P.rx) * k; P.rz += (P.z - P.rz) * k; P.ry += (P.y - P.ry) * k;
       P.ryaw += angDiff(P.ryaw, P.yaw) * k;
@@ -687,6 +768,7 @@ export class Game {
     for (const P of this.players.values()) {
       if (P.id === this.myId) continue;
       const on = me.dead ? P.dead : !P.dead;
+      if (P.monster) { const th = [...this.things.byId.values()].find((t) => t.kind === 'applause' && t.a > 0); if (th) { P.rx = th.rx; P.rz = th.rz; } }
       const d = Math.hypot(P.rx - (me.dead ? this.camera.position.x : me.x), P.rz - (me.dead ? this.camera.position.z : me.z));
       const both = me.dead && P.dead;
       const vol = both ? 1 : clamp(1 - (d - 6) / 34, 0, 1);
@@ -710,14 +792,17 @@ export class Game {
     const left = Math.max(0, this.left);
     h.clock.textContent = this.clock();
     h.clock.classList.toggle('late', left < 60);
-    h.night.textContent = `Night ${this.night} of ${this.nightOf} · ${W.name}${this.events.info ? ' · ' + this.events.info.tag : ''}`;
-    h.views.textContent = `Tonight's tapes: ${fmt(this.nightViews)} views · Season ${fmt(this.seasonViews)} / ${fmt(this.quota)}`;
+    h.night.textContent = `${this.mode === 'endless' ? 'Endless night' : this.mode === 'monster' ? 'Monster night' : `Night ${this.night} of ${this.nightOf}`} · ${W.name}${this.events.info ? ' · ' + this.events.info.tag : ''}`;
+    if (this.mode === 'endless') { const s = Math.max(0, Math.ceil(this.nextCheck - this.time)); h.views.textContent = `ENDLESS · tapes ${fmt(this.nightViews)} views · next check in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}: needs ${fmt(this.needNext || this.endlessNeed(this.checks + 1))}`; }
+    else if (this.isMonster) h.views.textContent = `You are Mr. Applause · taken: ${[...this.players.values()].filter((P) => P.dead).length} of ${this.living().length + [...this.players.values()].filter((P) => P.dead).length}`;
+    else h.views.textContent = `Tonight's tapes: ${fmt(this.nightViews)} views · Season ${fmt(this.seasonViews)} / ${fmt(this.quota)}${this.monsterId ? ' · 👏 ' + (this.players.get(this.monsterId)?.name || '?') + ' is Mr. Applause' : ''}`;
     if (!me.dead) h.spec.hidden = true;
     // prompt
     let prompt = '';
     const held = this.items.carriedBy(this.myId), tgt = !me.dead && !held && this.lookTarget();
     const K = (key, pad) => this.input.label(key, pad);
     if (me.dead) prompt = '';
+    else if (this.isMonster) prompt = `${K('LMB', 'RT')} grab · ${K('RMB', 'RB')} take a bow · ${K('Shift', 'LB')} run`;
     else if (me.carrying) prompt = `Carrying ${this.players.get(me.carrying)?.name || 'a body'} · bring them to the van to revive · ${K('LMB', 'RT')} throw · ${K('Q', 'B')} drop`;
     else if (tgt && tgt.kind === 'body') prompt = `${K('E', 'X')} carry ${tgt.P.name} (the van brings them back)`;
     else if (tgt && { walkie: 1, emf: 1, flash: 1, battery: 1 }[tgt.kind]) prompt = `${K('E', 'X')} take the ${{ walkie: 'walkie-talkie', emf: 'EMF meter', flash: 'flash camera', battery: 'spare battery' }[tgt.kind]}`;
@@ -778,6 +863,7 @@ export class Game {
     this.cam.dispose();
     this.things.dispose(); this.items.dispose();
     this.rain.dispose(); this.dons.dispose(); this.wheel.dispose(); this.events.dispose(); this.tut?.dispose();
+    document.body.classList.remove('monster');
     this.sfx.stopAmbient();
     this.hud.root.hidden = true;
     this.hud.down.classList.remove('on');
@@ -787,4 +873,11 @@ export class Game {
 
 import { COLORS } from './models.js';
 const colorOf = (i) => COLORS[i % COLORS.length];
+let ringT = null;
+function ringTex() {
+  if (ringT) return ringT;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  x.strokeStyle = '#fff'; x.lineWidth = 5; x.beginPath(); x.arc(32, 32, 26, 0, 7); x.stroke(); x.lineWidth = 2; x.beginPath(); x.arc(32, 32, 17, 0, 7); x.stroke();
+  return (ringT = new THREE.CanvasTexture(c));
+}
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

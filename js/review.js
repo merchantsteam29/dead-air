@@ -116,6 +116,8 @@ export class Review {
     ];
     const total = info.seasonViews, pct = Math.min(100, (total / info.quota) * 100);
     lines.push(`<div class="quota"><div class="qbar"><i style="width:${pct}%"></i></div><span>Season ${info.season}: ${fmt(total)} / ${fmt(info.quota)} views · night ${info.night} of ${info.nightOf}</span></div>`);
+    if (info.verdict === 'endless') { lines.splice(4, 1); lines.push(`<div class="verdict good">ENDLESS NIGHT</div><p>Lasted ${Math.floor(e.time / 60)} min ${e.time % 60} s · ${e.checks} check-in${e.checks === 1 ? '' : 's'} passed · ${fmt(e.views)} views banked.</p>`); }
+    if (info.verdict === 'monster' && e.monster) { lines.splice(4, 1); const dead = e.dead.filter((id) => id !== e.monster.id).length, crew = Object.keys(info.names).length - 1; lines.push(`<div class="verdict ${dead * 2 >= crew ? 'bad' : 'good'}">👏 ${esc(info.names[e.monster.id] || 'Someone')} WAS MR. APPLAUSE</div><p>He took ${dead} of ${crew}. ${dead * 2 >= crew ? 'The monster wins.' : 'The crew wins.'}</p>`); }
     if (info.verdict === 'renewed') lines.push(`<div class="verdict good">RENEWED FOR SEASON ${info.season + 1}</div><p>The network wants more. The quota goes up.</p>`);
     if (info.verdict === 'cancelled') lines.push(`<div class="verdict bad">CHANNEL TERMINATED</div><p>${fmt(total)} of ${fmt(info.quota)} views. You lasted ${info.season - 1} season${info.season === 2 ? '' : 's'} and ${info.night} night${info.night === 1 ? '' : 's'}.</p>`);
     $('rvStats').innerHTML = lines.join('');

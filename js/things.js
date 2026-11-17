@@ -288,6 +288,15 @@ export class Things {
   // poses for the camera (once in a while), and takes whoever he reaches. A thrown thing stuns him.
   applause(th, dt, living, near) {
     const g = this.g, W = g.world, night = g.night;
+    if (th.ctrl) { // a friend is driving: follow their moves; bows, stuns and catches still take their time
+      const P = g.players.get(th.ctrl);
+      if (!P) { th.ctrl = null; th.a = 0; return; } // they left: the AI takes over
+      if (th.s === 3 && th.t > 2.4) th.s = 0; if (th.s === 4 && th.t > 3) th.s = 0; if (th.s === 5 && th.t > 2.6) th.s = 0;
+      if (th.s === 3 || th.s === 4 || th.s === 5) return;
+      const moved = Math.hypot(P.x - th.x, P.z - th.z) / Math.max(dt, 1e-3);
+      th.x = P.x; th.z = P.z; th.yaw = P.yaw; th.s = moved > 3.8 ? 2 : moved > 0.3 ? 1 : 0;
+      return;
+    }
     if (th.s === 6) { th.y = -10; if (g.time > th.wake) { th.s = 0; th.y = 0; th.t = 0; } return; }
     th.poseCd = Math.max(0, (th.poseCd ?? 8) - dt);
     const speedK = 1 + (night - 1) * 0.06;
@@ -455,6 +464,7 @@ export class Things {
   }
 
   drawApplause(th, p, t, dt) {
+    if (this.g.isMonster && th.a === 1 + [...this.g.players.keys()].indexOf(this.g.myId)) th.model.visible = false; // (I am him: the camera is inside his head)
     const walk = th.s === 1 ? 1.4 : th.s === 2 ? 2.2 : th.s === 0 ? 0.9 : 0;
     const d = t * 4.2 * walk;
     p.legs[0].rotation.x = Math.sin(d) * 0.55 * Math.min(1, walk); p.legs[1].rotation.x = -Math.sin(d) * 0.55 * Math.min(1, walk);

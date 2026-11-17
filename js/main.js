@@ -139,12 +139,12 @@ async function boot() {
 }
 
 // ---------- starting a crew ----------
-async function playAlone() {
+async function playAlone(mode = 'season') {
   await boot(); await getMic();
   session = new Session({ sfx, mic: mic || null, name: settings.name, look: cleanLook(settings) });
   session.solo();
   wireSession();
-  newRun();
+  newRun(mode);
   startNight();
 }
 // Quick Play: there's no server, so public rooms use a fixed set of codes. probe() looks in all of them at once.
@@ -171,7 +171,7 @@ async function hostCrew(code, isPublic = false) {
   session.public = isPublic;
   try { await session.host(code); } catch (e) { session = null; msg(e.message); return; }
   newRun();
-  session.lobbyExtra = () => ({ run: run && { season: run.season, night: run.night, quota: run.quota, seasonViews: run.seasonViews } });
+  session.lobbyExtra = () => ({ run: run && { season: run.season, night: run.night, quota: run.quota, seasonViews: run.seasonViews, mode: run.mode } });
   renderLobby();
   history.replaceState(null, '', location.pathname + '?join=' + session.net.code);
 }
@@ -231,8 +231,8 @@ function wireSession() {
   };
 }
 
-function newRun() {
-  run = { season: 1, night: 1, seasonViews: 0, quota: quotaFor(1), seed: Math.floor(Math.random() * 1e9) };
+function newRun(mode = run?.mode || 'season') {
+  run = { season: 1, night: 1, seasonViews: 0, quota: quotaFor(1), seed: Math.floor(Math.random() * 1e9), mode };
 }
 function quotaFor(season) {
   const n = Math.max(1, session?.roster.length || 1);
@@ -245,7 +245,8 @@ function startNight() {
   if (run.night === 1 && run.seasonViews === 0) run.quota = quotaFor(run.season); // the crew size can change between seasons
   session.net.locked = true;
   session.resetHighlights();
-  lastStart = { t: 'start', seed: (run.seed + run.season * 1013 + run.night * 7919) >>> 0, night: run.night, season: run.season, quota: run.quota, seasonViews: run.seasonViews, nightOf: NIGHTS, crew: session.crew(), vanLvl: vanLevel(loadStats().views) };
+  lastStart = { t: 'start', seed: (run.seed + run.season * 1013 + run.night * 7919) >>> 0, night: run.night, season: run.season, quota: run.quota, seasonViews: run.seasonViews, nightOf: NIGHTS, crew: session.crew(), vanLvl: vanLevel(loadStats().views), mode: run.mode === 'monster' && session.roster.length < 2 ? 'season' : run.mode };
+  if (lastStart.mode === 'monster') { const ids = session.roster.map((r) => r.id); lastStart.monster = ids[Math.floor(Math.random() * ids.length)]; }
   session.net.broadcast(lastStart);
 }
 
@@ -257,7 +258,7 @@ function beginNight(m) {
   paused = false;
   run = run || {};
   Object.assign(run, { season: m.season, night: m.night, quota: m.quota, seasonViews: m.seasonViews });
-  game = new Game({ renderer, sfx, input, net: session.net, vc: session.vc, tape, myId: session.myId, crew: m.crew, seed: m.seed, night: m.night, season: m.season, quota: m.quota, seasonViews: m.seasonViews, nightOf: m.nightOf, settings, micLevel: () => micLevel(), onEnd: onNightEnd, vanLvl: m.vanLvl || 0, tutorial: !session.online && m.night === 1 && m.season === 1 && (tutorialWanted() || params.has('tutorial')) });
+  game = new Game({ renderer, sfx, input, net: session.net, vc: session.vc, tape, myId: session.myId, crew: m.crew, seed: m.seed, night: m.night, season: m.season, quota: m.quota, seasonViews: m.seasonViews, nightOf: m.nightOf, settings, micLevel: () => micLevel(), onEnd: onNightEnd, vanLvl: m.vanLvl || 0, mode: m.mode, monster: m.monster, tutorial: !session.online && m.night === 1 && m.season === 1 && (tutorialWanted() || params.has('tutorial')) });
   if (session.vc) { session.vc.mode = settings.voiceMode; session.vc.volume = settings.voiceVol; }
   gov.reset();
   micLabel();
@@ -290,9 +291,11 @@ function onNightEnd(end) {
 }
 
 function hostAfterNight(end) {
-  run.seasonViews += end.views;
+  const special = end.mode === 'endless' || end.mode === 'monster';
+  if (!special) run.seasonViews += end.views;
   const lastNight = run.night >= NIGHTS;
-  const verdict = lastNight ? (run.seasonViews >= run.quota ? 'renewed' : 'cancelled') : null;
+  const verdict = special ? end.mode : lastNight ? (run.seasonViews >= run.quota ? 'renewed' : 'cancelled') : null;
+  if (end.mode === 'endless') { const b = records.endless || { views: 0, time: 0 }; records.endless = { views: Math.max(b.views, end.views), time: Math.max(b.time, end.time) }; saveRecords(); }
   const names = Object.fromEntries(session.roster.map((r) => [r.id, r.name]));
   const t0 = performance.now();
   const wait = setInterval(() => {
@@ -318,7 +321,7 @@ async function showReview(m) {
   const info = m.info;
   if (!session.isHost) Object.assign(run || (run = {}), { season: info.season, night: info.night, seasonViews: info.seasonViews, quota: info.quota });
   $('rvNext').hidden = !session.isHost; $('rvLobby').hidden = !session.isHost || !session.online; $('rvWait').hidden = session.isHost;
-  $('rvNext').textContent = info.verdict === 'cancelled' ? (session.online ? 'Back to the lobby' : 'Back to the title') : info.verdict === 'renewed' ? `Start season ${info.season + 1}` : `Next night (${info.night + 1} of ${info.nightOf})`;
+  $('rvNext').textContent = info.verdict === 'endless' || info.verdict === 'monster' ? (session.online ? 'Back to the lobby' : 'Back to the title') : info.verdict === 'cancelled' ? (session.online ? 'Back to the lobby' : 'Back to the title') : info.verdict === 'renewed' ? `Start season ${info.season + 1}` : `Next night (${info.night + 1} of ${info.nightOf})`;
   $('rvNext').dataset.v = info.verdict || '';
   const clips = m.keys.map((k) => session.highlight(k)).filter(Boolean);
   review.play(clips, info);
@@ -329,7 +332,7 @@ $('rvNext').onclick = () => {
   sfx.play('click');
   if (!session?.isHost) return;
   const v = $('rvNext').dataset.v;
-  if (v === 'cancelled') {
+  if (v === 'cancelled' || v === 'endless' || v === 'monster') {
     newRun();
     if (session.online) { session.net.broadcast({ t: 'lobby' }); } else leaveCrew();
     return;
@@ -353,6 +356,11 @@ function renderLobby() {
   $('lobbyRun').textContent = r ? `Season ${r.season} · next: night ${r.night} of ${NIGHTS} · ${fmt(r.seasonViews)} / ${fmt(r.quota)} views` : '';
   $('lobbyList').innerHTML = session.crew().map((c) => `<li><i style="background:#${new THREE.Color(COLORS[c.color]).getHexString()}"></i>${esc(c.name)}${c.id === session.myId ? ' <em>(you)</em>' : ''}${c.id === 'h' ? ' <span>host</span>' : ''}<small class="role">${ROLE_INFO[c.role]?.[0] || ''}</small></li>`).join('');
   $('btnStart').hidden = !session.isHost;
+  $('modeRow').hidden = !session.online;
+  $('modePick').disabled = !session.isHost;
+  const rm = session.isHost ? run?.mode : session.lobbyState?.run?.mode;
+  if (rm) $('modePick').value = rm;
+  $('modeNote').textContent = { season: 'Three nights a season, hit the quota.', endless: 'One night that never ends: the network checks your views every 3 minutes.', monster: session.roster.length < 2 ? 'Needs 2+ players.' : 'One of you (picked at random) plays Mr. Applause.' }[rm || 'season'];
   $('btnStart').textContent = session.roster.length > 1 ? `Start night (${session.roster.length} crew)` : 'Start night (just you? invite someone!)';
 }
 function lookPicker(root) {
@@ -394,6 +402,8 @@ click('btnSettings', () => { settingsBack = game ? 'pause' : 'title'; fillSettin
 click('howBack', () => show('title'));
 click('btnTutorial', () => { resetTutorial(); $('btnTutorial').textContent = 'Done: the next Play alone starts with it'; });
 click('btnStart', () => startNight());
+click('btnEndless', () => playAlone('endless'));
+$('modePick').addEventListener('change', (e) => { if (!session?.isHost || !run) return; run.mode = e.target.value; session.sendLobby(); renderLobby(); });
 click('btnLeaveLobby', () => leaveCrew());
 click('btnCopy', () => { navigator.clipboard?.writeText($('lobbyLink').value).then(() => { $('btnCopy').textContent = 'Copied!'; setTimeout(() => $('btnCopy').textContent = 'Copy invite link', 1500); }).catch(() => $('lobbyLink').select()); });
 click('pResume', () => resume());
@@ -406,7 +416,7 @@ click('micTestBtn', async () => { await boot(); await getMic(); $('micTestNote')
 $('nameIn').value = settings.name;
 $('nameIn').addEventListener('change', () => { settings.name = cleanName($('nameIn').value); $('nameIn').value = settings.name; save(); });
 syncPickers();
-if (records.best) $('bestLine').textContent = `Longest run: ${records.best} night${records.best === 1 ? '' : 's'}`;
+if (records.best || records.endless) $('bestLine').textContent = [records.best ? `Longest run: ${records.best} night${records.best === 1 ? '' : 's'}` : '', records.endless ? `Endless best: ${fmt(records.endless.views)} views, ${Math.floor(records.endless.time / 60)} min` : ''].filter(Boolean).join(' · ');
 
 function fillSettings() {
   const s = settings;
